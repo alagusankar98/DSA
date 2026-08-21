@@ -1,5 +1,4 @@
-```python
-markdown_content_v2 = """# Linked List - Topic Guide
+# Linked List - Topic Guide
 
 ## 1. Core Fundamentals
 
@@ -91,3 +90,11 @@ slow->next = nullptr;          // Sever the first half cleanly!
 
 * Since the second half is either equal in size or exactly one element shorter, you can simply loop while the second half exists: `while (second != nullptr)`.
 * Inside the loop, rewire the pointers. No need to worry about appending leftovers outside the loop, as the first half's final node is already correctly pointing to `nullptr`.
+
+---
+
+## 4. Common Pitfalls & Mistakes Log
+
+* **Missing Guard Clauses with `fast = head->next`:** Initializing a pointer to `head->next` without first verifying `head != nullptr` will cause a segmentation fault on empty lists. Always use `if (!head || !head->next) return;` at the top of the function for these patterns.
+* **Using Dummy Nodes for In-Place Interweaving:** Dummy nodes are excellent for *merging* lists into a new structure, but they overcomplicate *in-place* zipping. It's much cleaner to use temporary pointers to hold the `next` nodes and directly rewire the existing nodes.
+* **Pass-by-Value Pointer Reassignment:** In C++, function parameters like `ListNode* head` are passed by value. Reassigning `head = dummyNode.next` at the very end of a `void` function only updates the local copy of the pointer, leaving the caller's pointer completely unchanged. This is a common logic trap.

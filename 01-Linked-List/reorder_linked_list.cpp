@@ -1,43 +1,43 @@
 #include "list_node.hpp"
 
 void reorderList(ListNode* head) {
+    if(!head ||!head->next) return;
+
     ListNode* middleNode = head;
-    ListNode* fast = head;
-    ListNode* middlePrev = nullptr;
+    ListNode* fast = head->next;
 
     while(fast && fast->next){
-        middlePrev = middleNode;
         middleNode = middleNode->next;
         fast = fast->next->next;
     }
 
-    if(middlePrev){
-        middlePrev->next = nullptr;
-    } else {
-        return;
-    }
+    // First half of list is now >= Second Half because of changed initialization
+    // 'middleNode' points to exactly floor(n/2)th node
+    ListNode* secondHead = middleNode->next;
+    middleNode->next = nullptr;
 
     // Reverse from middle node
     ListNode* revHead = nullptr;
-    while(middleNode){
-        auto next = middleNode->next;
-        middleNode->next = revHead;
-        revHead = middleNode;
-        middleNode = next;
+    while(secondHead){
+        auto next = secondHead->next;
+        secondHead->next = revHead;
+        revHead = secondHead;
+        secondHead = next;
     }
 
-    // Interweave head and revHead (revHead has equal or one element greater)
+    // Interweave head and revHead (head has equal or one element greater)
     ListNode dummyNode;
     ListNode* newList = &dummyNode;
-    while(head && revHead){
-        newList->next = head;
-        head = head->next;
-        newList = newList->next;
+    while(revHead){
+        ListNode* firstNext = head->next;
+        ListNode* secondNext = revHead->next;
 
-        newList->next = revHead;
-        revHead = revHead->next;
-        newList = newList->next;
+        head->next = revHead;
+        revHead->next = firstNext;
+
+        head = firstNext;
+        revHead = secondNext;
     }
-    newList->next = revHead;
+    newList->next = head;
     head = dummyNode.next;
 }
