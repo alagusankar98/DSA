@@ -8,8 +8,8 @@ enable_testing()
 find_package(GTest REQUIRED)
 include(GoogleTest)
 
-# Correct glob pattern with no spaces
-file(GLOB_RECURSE TEST_SOURCES "*/*_test.cpp")
+# Add CONFIGURE_DEPENDS to automatically detect new/deleted files
+file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "*/*_test.cpp")
 
 foreach(test_source ${TEST_SOURCES})
     get_filename_component(test_target ${test_source} NAME_WE)

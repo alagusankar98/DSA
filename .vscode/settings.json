@@ -1,3 +1,9 @@
 {
-    "testMate.cpp.test.executables": "build/**/*_test"
+    "testMate.cpp.test.executables": "build/**/*_test",
+    "testMate.cpp.test.advancedExecutables": [
+        {
+            "pattern": "{build,Build,build-*,out,out-*}/**/*{test,Test,TEST}*",
+            "buildTask": "CMake: build"
+        }
+    ]
 }

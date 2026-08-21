@@ -13,4 +13,7 @@ std::vector<int> toVector(ListNode* head);
 // Free heap used by Linked list
 void freeList(ListNode* head);
 
+// Introduce cycle in linked list
+void createCycle(ListNode* head, std::pair<int, int> indices);
+
 #endif

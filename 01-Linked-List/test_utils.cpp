@@ -31,3 +31,27 @@ void freeList(ListNode* head){
         delete nodeToDelete;
     }
 }
+
+void createCycle(ListNode* head, std::pair<int, int> indices){
+    if (!head) return;
+
+    ListNode* targetNode = nullptr;
+    ListNode* tail = nullptr;
+    ListNode* current = head;
+    
+    int index = 0;
+    while (current != nullptr) {
+        if (index == indices.first) {
+            targetNode = current;
+        }
+        if (current->next == nullptr) {
+            tail = current;
+        }
+        current = current->next;
+        index++;
+    }
+
+    if (tail && targetNode) {
+        tail->next = targetNode;
+    }
+}
