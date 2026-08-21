@@ -32,6 +32,7 @@ When tackling Linked List problems, keep these core patterns in mind:
 
 * **Dummy Node:** Use when the `head` might change or when merging/creating lists. It prevents complex `nullptr` checks for the first element.
 * **Two Pointers (Fast/Slow):** Used for cycle detection (Tortoise and Hare) and finding the middle of a list.
+* **Two Pointers (Fixed-Distance):** Used for finding elements at a specific offset from the end. Maintain a gap of $n$ between two pointers.
 * **Three Pointers (`prev`, `curr`, `next`):** The standard for reversing links in place.
 * **Mandatory Guard Clauses:** Defensive programming is critical. Always check for `!head` and/or `!head->next` at the very top of your function, especially before initializing advanced pointer setups (like `fast = head->next`) to prevent segmentation faults.
 
@@ -91,6 +92,13 @@ slow->next = nullptr;          // Sever the first half cleanly!
 * Since the second half is either equal in size or exactly one element shorter, you can simply loop while the second half exists: `while (second != nullptr)`.
 * Inside the loop, rewire the pointers. No need to worry about appending leftovers outside the loop, as the first half's final node is already correctly pointing to `nullptr`.
 
+### [5] Remove Nth Node From End of List
+
+**Core Concept:** Fixed-Distance Two Pointers + Dummy Node.
+
+* **Execution:** Create a stack-allocated dummy node pointing to `head`. Advance a `current` pointer $n$ steps ahead. Then advance both `current` and a `prevNode` pointer (starting at dummy) until `current` hits `nullptr`. `prevNode` will safely land exactly on the node *before* the target, even if the target is the head itself.
+* **Memory Management:** Always explicitly `delete` the removed node in C++ to avoid heap memory leaks.
+
 ---
 
 ## 4. Common Pitfalls & Mistakes Log
@@ -98,3 +106,7 @@ slow->next = nullptr;          // Sever the first half cleanly!
 * **Missing Guard Clauses with `fast = head->next`:** Initializing a pointer to `head->next` without first verifying `head != nullptr` will cause a segmentation fault on empty lists. Always use `if (!head || !head->next) return;` at the top of the function for these patterns.
 * **Using Dummy Nodes for In-Place Interweaving:** Dummy nodes are excellent for *merging* lists into a new structure, but they overcomplicate *in-place* zipping. It's much cleaner to use temporary pointers to hold the `next` nodes and directly rewire the existing nodes.
 * **Pass-by-Value Pointer Reassignment:** In C++, function parameters like `ListNode* head` are passed by value. Reassigning `head = dummyNode.next` at the very end of a `void` function only updates the local copy of the pointer, leaving the caller's pointer completely unchanged. This is a common logic trap.
+* **Memory Leaks vs. Stack Allocation:** When creating a dummy node, allocating it on the stack (`ListNode dummyNode;`) is optimal because it automatically cleans up when out of scope. However, for nodes removed from a heap-allocated linked list, explicitly calling `delete nodeToDelete;` is mandatory in production C++ to prevent memory leaks, even if competitive programming platforms do not enforce it.
+* **Type Mismatch Warnings (`size_t` vs `int`):** Iterating with `for (size_t i = 0; i < n; ...)` when `n` is a signed `int` triggers `-Wsign-compare` compiler warnings. Always match types in loops.
+* **Post-increment (`i++`) vs. Pre-increment (`++i`):** Standardize on using `++i` in `for` loops. While identical for primitive types due to compiler optimization, `i++` creates an unnecessary temporary copy under the hood. For C++ iterators or complex objects, this temporary copy cannot always be optimized away and introduces performance overhead. If `i` is just a primitive `int`, modern compilers are smart enough to optimize away the temporary copy, so the resulting assembly code is identical. However, in C++, you frequently loop using iterators (e.g., `std::vector<int>::iterator`) or custom classes. For these complex objects, the compiler often *cannot* optimize away the temporary copy because the copy constructor might have side effects. Because of this, using `++i` is universally taught as the standard C++ best practice to ensure you never accidentally introduce unnecessary overhead
+* **Redundant Pointer Unlinking:** Setting `node->next = nullptr` immediately before calling `delete node` is unnecessary computation. Once the memory is freed, the pointer's previous state is irrelevant.
