@@ -35,6 +35,7 @@ When tackling Linked List problems, keep these core patterns in mind:
 * **Two Pointers (Fixed-Distance):** Used for finding elements at a specific offset from the end. Maintain a gap of $n$ between two pointers.
 * **Three Pointers (`prev`, `curr`, `next`):** The standard for reversing links in place.
 * **Mandatory Guard Clauses:** Defensive programming is critical. Always check for `!head` and/or `!head->next` at the very top of your function, especially before initializing advanced pointer setups (like `fast = head->next`) to prevent segmentation faults.
+* **Unified Loop Conditions:** When processing multiple lists or tracking a carry, combine conditions (e.g., `while(l1 || l2 || carry)`) to avoid redundant cleanup loops.
 
 ---
 
@@ -82,7 +83,6 @@ This problem combines three distinct sub-problems: Finding the middle, Reversing
 ```cpp
 ListNode* second = slow->next; // The start of the second half
 slow->next = nullptr;          // Sever the first half cleanly!
-
 ```
 
 
@@ -99,6 +99,12 @@ slow->next = nullptr;          // Sever the first half cleanly!
 * **Execution:** Create a stack-allocated dummy node pointing to `head`. Advance a `current` pointer $n$ steps ahead. Then advance both `current` and a `prevNode` pointer (starting at dummy) until `current` hits `nullptr`. `prevNode` will safely land exactly on the node *before* the target, even if the target is the head itself.
 * **Memory Management:** Always explicitly `delete` the removed node in C++ to avoid heap memory leaks.
 
+### [6] Add Two Numbers
+
+**Core Concept:** Unified Iteration + Dummy Node (Building a new list).
+
+* **Execution:** Loop with a combined condition `while(carry || l1 || l2)`. This elegantly handles lists of different lengths and the final carry-over without needing extra trailing loops. Extract values using ternary operators (`l1 ? l1->val : 0`), compute the sum and new carry, and append a new node to a dummy list.
+
 ---
 
 ## 4. Common Pitfalls & Mistakes Log
@@ -108,5 +114,6 @@ slow->next = nullptr;          // Sever the first half cleanly!
 * **Pass-by-Value Pointer Reassignment:** In C++, function parameters like `ListNode* head` are passed by value. Reassigning `head = dummyNode.next` at the very end of a `void` function only updates the local copy of the pointer, leaving the caller's pointer completely unchanged. This is a common logic trap.
 * **Memory Leaks vs. Stack Allocation:** When creating a dummy node, allocating it on the stack (`ListNode dummyNode;`) is optimal because it automatically cleans up when out of scope. However, for nodes removed from a heap-allocated linked list, explicitly calling `delete nodeToDelete;` is mandatory in production C++ to prevent memory leaks, even if competitive programming platforms do not enforce it.
 * **Type Mismatch Warnings (`size_t` vs `int`):** Iterating with `for (size_t i = 0; i < n; ...)` when `n` is a signed `int` triggers `-Wsign-compare` compiler warnings. Always match types in loops.
-* **Post-increment (`i++`) vs. Pre-increment (`++i`):** Standardize on using `++i` in `for` loops. While identical for primitive types due to compiler optimization, `i++` creates an unnecessary temporary copy under the hood. For C++ iterators or complex objects, this temporary copy cannot always be optimized away and introduces performance overhead. If `i` is just a primitive `int`, modern compilers are smart enough to optimize away the temporary copy, so the resulting assembly code is identical. However, in C++, you frequently loop using iterators (e.g., `std::vector<int>::iterator`) or custom classes. For these complex objects, the compiler often *cannot* optimize away the temporary copy because the copy constructor might have side effects. Because of this, using `++i` is universally taught as the standard C++ best practice to ensure you never accidentally introduce unnecessary overhead
+* **Post-increment (`i++`) vs. Pre-increment (`++i`):** Standardize on using `++i` in `for` loops. While identical for primitive types due to compiler optimization, `i++` creates an unnecessary temporary copy under the hood. For C++ iterators or complex objects, this temporary copy cannot always be optimized away and introduces performance overhead.
 * **Redundant Pointer Unlinking:** Setting `node->next = nullptr` immediately before calling `delete node` is unnecessary computation. Once the memory is freed, the pointer's previous state is irrelevant.
+* **Implicit Type Conversions:** Avoid mixing types like `uint8_t` for carries with `int` for sums. While functionally fine for small values, it triggers implicit integer promotion in C++. Sticking to standard `int` for mathematical operations keeps the code clean and avoids compiler warnings.
