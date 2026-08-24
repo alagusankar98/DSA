@@ -41,3 +41,38 @@ void reorderList(ListNode* head) {
     newList->next = head;
     head = dummyNode.next;
 }
+
+// Alternate O(1) space approach with interweaving
+
+// Node* copyRandomList(Node* head) {
+//     Node dummyNode(-1);
+//     Node* newList = &dummyNode;
+    
+//     Node* current = head;
+//     while(current){
+//         Node* nextNode = current->next;
+//         Node* newNode = new Node(current->val);
+//         current->next = newNode;
+//         newNode->next = nextNode;
+//         current = nextNode;
+//     }
+
+//     current = head;
+//     while(current){
+//         Node* copyNode = current->next;
+//         if(current->random){
+//             copyNode->random = current->random->next;
+//         }
+//         current = copyNode->next;
+//     }
+
+//     current = head;
+//     while(current){
+//         Node* copyNode = current->next;
+//         newList->next = copyNode;
+//         newList = newList->next;
+//         current = copyNode->next;
+//     }
+
+//     return dummyNode.next;
+// }
