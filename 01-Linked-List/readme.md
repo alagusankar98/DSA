@@ -43,77 +43,56 @@ When tackling Linked List problems, keep these core patterns in mind:
 
 ### [1] Reverse Linked List
 
-**Core Concept:** The 3-pointer technique (`prev`, `current`, `next`).
-
-* **Execution:** `next` is purely a temporary placeholder to prevent losing the rest of the list.
-* **Initialization:** `prev = nullptr`, `curr = head`.
-* **Termination:** Loop until `curr == nullptr`. Return `prev` as the new head.
+* **The Core Pattern:** The 3-pointer technique (`prev`, `current`, `next`).
+* **The "Gotcha":** `next` is purely a temporary placeholder to prevent losing the rest of the list. Also, beware of **pass-by-value pointer reassignment**: reassigning `head = dummyNode.next` at the very end of a `void` function only updates the local copy of the pointer, leaving the caller's pointer completely unchanged.
+* **Time & Space Complexity:** $O(N)$ Time / $O(1)$ Space.
+* **The Struggle & Insights:** The mental model of the three pointers was solid. Initialization: `prev = nullptr`, `curr = head`. Termination: Loop until `curr == nullptr`. Return `prev` as the new head.
 
 ### [2] Merge Two Sorted Lists
 
-**Core Concept:** The Dummy Node pattern.
-
-* **Execution:** Loop `while (list1 != nullptr && list2 != nullptr)`. Once the loop breaks, attach the remaining nodes with a single pointer assignment: `tail->next = list1 ? list1 : list2;`.
+* **The Core Pattern:** The Dummy Node pattern.
+* **The "Gotcha":** Forgetting to append the remainder of the list outside the loop. Once the loop `while (list1 != nullptr && list2 != nullptr)` breaks, attach the remaining non-empty nodes with a single pointer assignment: `tail->next = list1 ? list1 : list2;`.
+* **Time & Space Complexity:** $O(M + N)$ Time / $O(1)$ Space.
+* **The Struggle & Insights:** Recognized the dummy node approach early to track the changing head node and avoid empty list initialization checks.
 
 ### [3] Linked List Cycle
 
-**Algorithm Name:** **Floyd’s Cycle-Finding Algorithm** (Tortoise and Hare).
-
-* **Initialization Debate:**
-* **Approach A:** `slow = head`, `fast = head`. Move pointers *before* checking equality. Preferred because `while (fast && fast->next)` safely handles `nullptr` lists.
-* **Approach B:** `slow = head`, `fast = head->next`. Check equality *before* moving. Requires a mandatory guard clause `if (!head) return false;` to prevent segfaults.
-
-
+* **The Core Pattern:** Two Pointers (Floyd’s Cycle-Finding / Tortoise and Hare).
+* **The "Gotcha":** **Missing Guard Clauses** with `fast = head->next`. Initializing a pointer to `head->next` without first verifying `head != nullptr` will cause a segmentation fault on empty lists. If using this initialization, you must use `if (!head) return false;`. Starting `slow = head` and `fast = head` and checking equality *after* moving avoids this entirely.
+* **Time & Space Complexity:** $O(N)$ Time / $O(1)$ Space.
+* **The Struggle & Insights:** Forgot the algorithm name (Floyd's). Debated between checking equality before or after moving pointers depending on initialization (Approach A vs Approach B).
 
 ### [4] Reorder List
 
-This problem combines three distinct sub-problems: Finding the middle, Reversing the second half, and Interweaving.
-
-**1. Finding the Middle & Severing:**
-
-* **Guard Clause is Mandatory:** Before anything, you *must* have `if (!head || !head->next) return;` to prevent segfaults on 0 or 1 node lists. (Using `!head->next->next` to skip 2-node lists is also optimal).
+* **The Core Pattern:** Two Pointers (Fast/Slow) to find middle + Reverse second half + Interweave.
+* **The "Gotcha":** **Using Dummy Nodes for In-Place Interweaving**. Dummy nodes are excellent for merging, but overcomplicate in-place zipping. It's cleaner to use temporary pointers to hold `next` nodes and directly rewire existing nodes. Also, missing the `if (!head || !head->next) return;` guard clause will cause segfaults here.
+* **Time & Space Complexity:** $O(N)$ Time / $O(1)$ Space.
+* **The Struggle & Insights:** Struggled with the separation and weaving points, specifically trying to sever the connection of the first half and tracking a `prev` node. Solved it by changing initialization to perfectly land `slow` on the exact tail of the first half:
 * **Initialization:** `slow = head` and `fast = head->next`.
-* **The Split:** When the loop `while (fast && fast->next)` finishes, `slow` points exactly to the tail of the first half.
+* **The Split:** When `while (fast && fast->next)` finishes, `slow` points exactly to the tail of the first half.
 * *Even Length ($n$):* First half = $n/2$, Second half = $n/2$.
 * *Odd Length ($n$):* First half = $(n/2) + 1$, Second half = $n/2$.
 * The second half is *always* equal to or exactly one element shorter.
+* **Severing:** `ListNode* second = slow->next; slow->next = nullptr;`
+* **Interweaving:** Because of the length split, simply loop `while (second != nullptr)`. The first half's final node is already correctly pointing to `nullptr`.
 
 
-* **Severing:**
-```cpp
-ListNode* second = slow->next; // The start of the second half
-slow->next = nullptr;          // Sever the first half cleanly!
-```
-
-
-
-**2. Interweaving:**
-
-* Since the second half is either equal in size or exactly one element shorter, you can simply loop while the second half exists: `while (second != nullptr)`.
-* Inside the loop, rewire the pointers. No need to worry about appending leftovers outside the loop, as the first half's final node is already correctly pointing to `nullptr`.
 
 ### [5] Remove Nth Node From End of List
 
-**Core Concept:** Fixed-Distance Two Pointers + Dummy Node.
+* **The Core Pattern:** Two Pointers (Fixed-Distance) + Dummy Node.
+* **The "Gotcha":**
+* **Memory Leaks vs Stack Allocation:** Allocating a dummy node on the stack (`ListNode dummyNode;`) is optimal for automatic cleanup, but explicitly calling `delete nodeToDelete;` is mandatory in production C++ to prevent heap memory leaks.
+* **Type Mismatch Warnings:** Iterating with `for (size_t i = 0; i < n; ...)` against a signed `int n` triggers `-Wsign-compare` compiler warnings. Always match types.
+* **Post-increment vs. Pre-increment:** Using `i++` creates unnecessary temporary copies under the hood. Standardize on `++i` in `for` loops.
+* **Redundant Pointer Unlinking:** Setting `nodeToDelete->next = nullptr` immediately before calling `delete nodeToDelete` is unnecessary computation.
 
-* **Execution:** Create a stack-allocated dummy node pointing to `head`. Advance a `current` pointer $n$ steps ahead. Then advance both `current` and a `prevNode` pointer (starting at dummy) until `current` hits `nullptr`. `prevNode` will safely land exactly on the node *before* the target, even if the target is the head itself.
-* **Memory Management:** Always explicitly `delete` the removed node in C++ to avoid heap memory leaks.
+* **Time & Space Complexity:** $O(N)$ Time / $O(1)$ Space.
+* **The Struggle & Insights:** Started moving `current` forward $n$ steps, then ran another loop. Tracked `prev` node in a temp variable, but realized the corner case of `prev` being the head or uninitialized. Moving the starting point of `prev` to a dummy node perfectly caught the edge case of deleting the head node itself and simplified getting the `nodeToDelete`.
 
 ### [6] Add Two Numbers
 
-**Core Concept:** Unified Iteration + Dummy Node (Building a new list).
-
-* **Execution:** Loop with a combined condition `while(carry || l1 || l2)`. This elegantly handles lists of different lengths and the final carry-over without needing extra trailing loops. Extract values using ternary operators (`l1 ? l1->val : 0`), compute the sum and new carry, and append a new node to a dummy list.
-
----
-
-## 4. Common Pitfalls & Mistakes Log
-
-* **Missing Guard Clauses with `fast = head->next`:** Initializing a pointer to `head->next` without first verifying `head != nullptr` will cause a segmentation fault on empty lists. Always use `if (!head || !head->next) return;` at the top of the function for these patterns.
-* **Using Dummy Nodes for In-Place Interweaving:** Dummy nodes are excellent for *merging* lists into a new structure, but they overcomplicate *in-place* zipping. It's much cleaner to use temporary pointers to hold the `next` nodes and directly rewire the existing nodes.
-* **Pass-by-Value Pointer Reassignment:** In C++, function parameters like `ListNode* head` are passed by value. Reassigning `head = dummyNode.next` at the very end of a `void` function only updates the local copy of the pointer, leaving the caller's pointer completely unchanged. This is a common logic trap.
-* **Memory Leaks vs. Stack Allocation:** When creating a dummy node, allocating it on the stack (`ListNode dummyNode;`) is optimal because it automatically cleans up when out of scope. However, for nodes removed from a heap-allocated linked list, explicitly calling `delete nodeToDelete;` is mandatory in production C++ to prevent memory leaks, even if competitive programming platforms do not enforce it.
-* **Type Mismatch Warnings (`size_t` vs `int`):** Iterating with `for (size_t i = 0; i < n; ...)` when `n` is a signed `int` triggers `-Wsign-compare` compiler warnings. Always match types in loops.
-* **Post-increment (`i++`) vs. Pre-increment (`++i`):** Standardize on using `++i` in `for` loops. While identical for primitive types due to compiler optimization, `i++` creates an unnecessary temporary copy under the hood. For C++ iterators or complex objects, this temporary copy cannot always be optimized away and introduces performance overhead.
-* **Redundant Pointer Unlinking:** Setting `node->next = nullptr` immediately before calling `delete node` is unnecessary computation. Once the memory is freed, the pointer's previous state is irrelevant.
-* **Implicit Type Conversions:** Avoid mixing types like `uint8_t` for carries with `int` for sums. While functionally fine for small values, it triggers implicit integer promotion in C++. Sticking to standard `int` for mathematical operations keeps the code clean and avoids compiler warnings.
+* **The Core Pattern:** Unified Iteration + Dummy Node (Building a new list).
+* **The "Gotcha":** **Implicit Type Conversions**. Avoid mixing types like `uint8_t` for carries with `int` for sums. While functionally fine for small values, it triggers implicit integer promotion in C++. Sticking to standard `int` for mathematical operations keeps the code clean and avoids compiler warnings.
+* **Time & Space Complexity:** $O(\max(M, N))$ Time / $O(\max(M, N))$ Space.
+* **The Struggle & Insights:** Solved the case of carry by adding till carry is 0 using a combined `while(carry || l1 || l2)` loop. Used dummy node to avoid complex cases for the first insertion. Extracted values using ternary operators (`l1 ? l1->val : 0`) when one list ran out faster.
