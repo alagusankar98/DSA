@@ -124,3 +124,19 @@ When tackling Linked List problems, keep these core patterns in mind:
     * **C++ Rule of 3/5:** Forgetting to explicitly delete copy and move semantics (e.g., `LRUCache(const LRUCache&) = delete;`) violates core C++ principles and can lead to memory corruption if the cache object is ever copied.
 * **Time & Space Complexity:** O(1) Time for both `get` and `put` / O(C) Space where C is the capacity.
 * **The Struggle & Insights:** Realized the absolute necessity of a doubly linked list, since removing a node from the middle of the list requires an O(1) operation. Adding generic `removeNode()` and `insertAtHead()` methods became remarkably easy by ensuring two dummy nodes (head and tail) are always present at a minimum, meaning we never insert anywhere else or deal with empty list edge cases.
+
+### [9] Find the Duplicate Number
+
+* **The Core Pattern:** Floyd's Cycle-Finding Algorithm (Tortoise and Hare) applied to an array. The array values act as `next` pointers, where `next_node = nums[current_node]`.
+* **The "Gotcha":**
+    * **The Initialization Trap:** If you initialize `slow` and `fast` differently (e.g., `slow = nums[0]` and `fast = nums[nums[0]]`) just to make a `while (slow != fast)` condition work cleanly, you break the exact offset required for the math to work. The intersection point shifts, requiring a reset point behind index `0`. You **must** start both pointers at `nums[0]` (the conceptual head) and use a `do-while` loop or a `while (true)` with an internal break.
+    * **Invalid Indexing:** Since the array contains values in the range `[1, n]`, index `0` is mathematically guaranteed to be the start of the list and outside the cycle. Do not use `-1` or other arbitrary numbers as placeholders for indexing; `nums[0]` is your definitive starting node. 
+* **Time & Space Complexity:** O(N) Time / O(1) Space.
+* **The Struggle & Insights:** Visualizing Phase 2 of the algorithm is a massive mind bend. The math proves why it works:
+    * Let $L$ = distance from start to the cycle entry.
+    * Let $X$ = distance from the cycle entry to the intersection point.
+    * Let $C$ = cycle length.
+    * Slow travels: $L + X$
+    * Fast travels twice that: $2(L + X)$. It also travels $L + X + kC$ (where $k$ is the number of laps).
+    * Equating them: $2(L + X) = L + X + kC \implies L + X = kC \implies L = kC - X$.
+    * Conclusion: The distance from the head to the cycle start ($L$) is perfectly equal to the remaining distance from the intersection to the cycle start ($kC - X$). Moving two pointers at 1 step/time from the head and the intersection guarantees they collide exactly at the cycle entry (the duplicate number).
