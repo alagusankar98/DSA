@@ -14,6 +14,19 @@ struct ListNode {
 
 ```
 
+### Doubly Linked List Node (C++)
+```cpp
+class Node {
+    public:
+        int val;
+        int key;
+        Node* next;
+        Node* prev;
+        Node() : val(-1), key(-1), next(nullptr), prev(nullptr) {}
+        Node(int val_, int key_) : val(val_), key(key_), next(nullptr), prev(nullptr) {}
+};
+```
+
 ### Time & Space Complexity
 
 | Operation | Time Complexity | Space Complexity | Notes |
@@ -100,3 +113,14 @@ When tackling Linked List problems, keep these core patterns in mind:
 * **The "Gotcha":** **Infinite Loops & Null Dereferences.** Forgetting to advance loop pointers (`current = current->next`) at the end of while loops is a classic logical trap. Additionally, explicitly checking `if(current->random)` is required before map lookups to avoid inserting and mapping `nullptr` keys.
 * **Time & Space Complexity:** O(N) Time / O(N) Space (Hash Map) or O(1) Space (Interweaving).
 * **The Struggle & Insights:** Creating the copy was straightforward with a dummy node, but initially tried running the random-mapping loop on the copy list. Realized the map strictly goes Original -> Copy, requiring the second loop to iterate on the original list. Caught the edge cases of missing loop increments and null random pointers. Successfully conceptualized the optimal O(1) space approach: 1) Interweave copies after originals, 2) Map randoms (`copy->random = orig->random->next`), 3) Unweave to restore both lists cleanly.
+
+### [8] LRU Cache
+
+* **The Core Pattern:** Doubly Linked List + Hash Map. Track both head and tail using dummy nodes to ensure O(1) insertions and removals without complex null-pointer checks. Write generic `removeNode()` and `insertAtHead()` methods.
+* **The "Gotcha":**
+    * **Tracking the Key:** You must store the `key` (not just the value) inside the doubly linked list node. When the cache exceeds capacity, you need this `key` from the evicted tail node to delete the corresponding entry from the hash map.
+    * **The 4-Link Update:** When inserting a node, it is easy to miss a link. You must update exactly 4 pointers to satisfy the insertion criteria (e.g., `newNode->prev`, `newNode->next`, `prevNode->next`, `nextNode->prev`).
+    * **DRY Code:** Failing to reuse the generic `removeNode()` method inside your `deleteFromTail()` method leads to unnecessary code repetition and increases the surface area for bugs.
+    * **C++ Rule of 3/5:** Forgetting to explicitly delete copy and move semantics (e.g., `LRUCache(const LRUCache&) = delete;`) violates core C++ principles and can lead to memory corruption if the cache object is ever copied.
+* **Time & Space Complexity:** O(1) Time for both `get` and `put` / O(C) Space where C is the capacity.
+* **The Struggle & Insights:** Realized the absolute necessity of a doubly linked list, since removing a node from the middle of the list requires an O(1) operation. Adding generic `removeNode()` and `insertAtHead()` methods became remarkably easy by ensuring two dummy nodes (head and tail) are always present at a minimum, meaning we never insert anywhere else or deal with empty list edge cases.
