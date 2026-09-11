@@ -171,3 +171,18 @@ When tackling Linked List problems, keep these core patterns in mind:
         2. Attach `prevNodeToCurrentGroup->next` to the newly reversed head.
         3. Attach `currentGroupHead->next` (which is now the tail) to `nextGroupHead`.
         4. Update `prevNodeToCurrentGroup = currentGroupHead` before the loop ends to set up the next iteration.
+
+### [12] Reverse Linked List II
+
+* **The Core Pattern:** Bounded Reversal + Segment Isolation. Similar to reversing in k-groups, you must isolate the sub-list by pinpointing the node immediately *before* the start (`left`) and the node immediately *after* the end (`right`), using a dummy node to handle edge cases where `left = 1`.
+* **The "Gotcha":**
+    * **Traversal Offsets:** To land exactly on the node *before* the reversal group, you must start at the `dummy` node and traverse exactly `left - 1` steps. 
+    * **Relative vs. Absolute Stepping:** A major blunder is taking `right` steps to find the end of the group instead of `right - left` steps. 
+    * **Starting Point for the End Node:** When traversing those `right - left` steps to find the last node of the sub-list, you must begin the traversal from the *actual reversal head* (the first node of the target group), not from the node *before* the group.
+* **Time & Space Complexity:** O(N) Time / O(1) Space.
+* **The Struggle & Insights:** The problem shares the exact same DNA as *Reverse Nodes in k-Group*. The sequence of operations must be strict and explicit: 
+    1. Traverse to find the node before the target group (`prevNode`).
+    2. Traverse `right - left` steps from the group's head to find the group's tail.
+    3. Track the next group's head (the node after the tail) and sever the target group's tail.
+    4. Reverse the isolated target group.
+    5. Reconnect the boundaries: link `prevNode->next` to the new reversed head (formerly the tail), and link the old head (which is now the tail of the reversed section) to the next group's head.
