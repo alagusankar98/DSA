@@ -140,3 +140,34 @@ When tackling Linked List problems, keep these core patterns in mind:
     * Fast travels twice that: $2(L + X)$. It also travels $L + X + kC$ (where $k$ is the number of laps).
     * Equating them: $2(L + X) = L + X + kC \implies L + X = kC \implies L = kC - X$.
     * Conclusion: The distance from the head to the cycle start ($L$) is perfectly equal to the remaining distance from the intersection to the cycle start ($kC - X$). Moving two pointers at 1 step/time from the head and the intersection guarantees they collide exactly at the cycle entry (the duplicate number).
+
+### [10] Merge K Sorted Lists
+
+* **The Core Pattern:** Divide and Conquer (Iterative). Write a helper function for `Merge Two Sorted Lists`, then repeatedly apply it to pairs of lists in the array until only one remains.
+* **The "Gotcha":**
+    * **Redundant Guard Clauses:** If your two-list merge helper is written cleanly (looping `while (l1 && l2)` and appending the remainder), explicit `if (!l1) return l2;` checks at the top are unnecessary overhead.
+    * **Index Pairing Complexity:** Pairing the $i$-th and $(n - i - 1)$-th indices inward requires careful management of the boundary $n$. If $n$ becomes odd, halving it to $n / 2$ will skip the middle element.
+    * **The Odd-Length Fix:** Updating the boundary using `n = (n + 1) / 2` perfectly rounds up odd lengths, ensuring the leftover list is carried over into the next merging round without being dropped.
+* **Alternative Pattern (Min-Heap):** Using a Priority Queue to track the head of every list. (Note: Divide and conquer is arguably better as it uses $O(1)$ auxiliary space, whereas the heap takes $O(K)$ space). Also, can pair neighboring elements for sort, push them to a new vector, assign new vector as original vector and proceed as well.
+* **Time & Space Complexity:** O(N log K) Time (where N is total nodes, K is number of lists) / O(1) Space.
+* **The Struggle & Insights:** Abstracting the two-list merge into a helper function made the problem significantly easier. The true difficulty was visualizing the recursive/iterative reduction of the array. Initially missed the constraint where an odd number of lists left one list entirely unmerged. Solved this mathematically by rounding the interval up with `(n + 1) / 2` at the end of each pass.
+
+### [11] Reverse Nodes in k-Group
+
+* **The Core Pattern:** Segment Isolation + Reversal. Explicitly pinpoint the boundary nodes before attempting any reversal: the node *before* the group, the *head* of the group, the *last node* of the group, and the *head of the next* group.
+* **The "Gotcha":**
+    * **Variable Naming Hell:** Using generic names like `prev`, `next`, `prevNode`, and `nextNode` simultaneously will cause your mental model to collapse. Use hyper-explicit names (e.g., `prevNodeToCurrentGroup`, `currentGroupHead`) to maintain sanity.
+    * **Traversal Exit Condition:** When finding the $k$-th node, the loop condition simply needs to break or return if the traversing pointer hits `nullptr` (meaning there aren't enough nodes left to form a full $k$-group). Overcomplicating it with combined index bounds and null checks (like `i < k && !lastNode`) leads to off-by-one errors.
+    * **The Next Loop Update:** After reversing and reconnecting a group, you must advance your "previous node" pointer for the next iteration. It must be updated to point to the *original* head of the current group (which has now become the tail of the reversed group). A common mistake is accidentally setting it to `nextGroupHead`.
+* **Time & Space Complexity:** O(N) Time / O(1) Space.
+* **The Struggle & Insights:** Even having solved this twice four months prior, it still took an hour to visualize and polish. The breakthrough came from stepping back from the messy variable soup and writing a strict blueprint in the comments before coding:
+    * **Nodes to track:**
+        1. Previous Node to current group (`prevNodeToCurrentGroup`)
+        2. Current group's head (`currentGroupHead`)
+        3. Last Node of current group / Reverse Head (`lastNode` / `revHead`)
+        4. Next Group's head (`nextGroupHead`)
+    * **Links to update (in exact order):**
+        1. Track next group's head and sever the last node of the current group.
+        2. Attach `prevNodeToCurrentGroup->next` to the newly reversed head.
+        3. Attach `currentGroupHead->next` (which is now the tail) to `nextGroupHead`.
+        4. Update `prevNodeToCurrentGroup = currentGroupHead` before the loop ends to set up the next iteration.
