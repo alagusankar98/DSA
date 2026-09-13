@@ -96,3 +96,37 @@ When tackling Bit Manipulation problems, keep these core patterns in mind:
     * **The XOR Pairing:** Realized that XORing every index and every value together will cause all present numbers to cancel out with their corresponding indices (since $x \oplus x = 0$), leaving only the missing number behind.
     * **Loop Design:** Debated between using `i + 1` within the loop versus altering the termination condition, ultimately realizing the latter breaks array boundaries. 
     * **Multiple Solutions:** Discovered the mathematical summation approach as a viable alternative to bit manipulation, highlighting the importance of recognizing different paradigms for the same problem.
+
+### [6] Reverse Integer
+
+* **The Core Pattern:** Digit Extraction (`% 10`) and Rebuilding (`res = res * 10 + digit`), combined with proactive Overflow Bounding.
+* **The "Gotcha":**
+    * **The `INT32_MIN` Trap:** Attempting to convert negative numbers to positive using `abs(x)` or `x * -1` will cause undefined behavior/overflow if `x` is `INT32_MIN`. The maximum positive value of a 32-bit signed int is `2147483647`, while the minimum is `-2147483648`.
+    * **Modulo Sign Retention:** In C++, the `%` operator natively retains the sign of the dividend (e.g., `-123 % 10 = -3`). You do not need to temporarily convert negative numbers to positive!
+    * **Loop Condition:** When natively handling both positive and negative numbers, the loop condition must be `while (x != 0)`, not `while (x > 0)`.
+* **Time & Space Complexity:** O(log(x)) Time (where base is 10, meaning the number of digits) / O(1) Space.
+* **The Struggle & Insights:**
+    * **Operator Swap:** Accidentally swapped `%` (for extracting the last digit) and `/` (for discarding the last digit). A quick reminder: modulo gets the remainder, division chops the number down.
+    * **Redundant Logic:** Started by storing the negative state and converting to positive, which overcomplicated the loop. Simplifying it to just handle the negative digits natively made the code much cleaner.
+    * **Optimization:** Precomputed the overflow bound (`INT32_MAX / 10`) into a local variable before the loop. While highly optimized, production-grade modern C++ compilers handle this automatically, pulling it into a `constexpr` is still an excellent habit for writing self-documenting code.
+
+
+### [7] Sum of Two Integers
+
+* **The Core Pattern:** Half-Adder Logic via Bit Manipulation. 
+    * Base Addition (without carry) = `a ^ b`
+    * Carry Generator = `(a & b) << 1`
+* **The "Gotcha":**
+    * **Negative Number Infinite Loops:** Attempting a bit-by-bit extraction (`num >> 1`) inside a `while (num != 0)` loop will infinite-loop on negative numbers because arithmetic right-shifts fill with `1`s to preserve the sign. You must strictly bound it to a 32-iteration `for` loop if doing it manually.
+    * **C++ Undefined Behavior:** In C++, left-shifting a negative number is technically undefined behavior (UB). To safely calculate the carry, you must cast the bitwise AND to an unsigned integer before shifting: `unsigned int carry = (unsigned int)(a & b) << 1;`.
+* **Time & Space Complexity:** $O(1)$ Time / $O(1)$ Space. (Runs in a maximum of 32 iterations).
+* **The Struggle & Insights:**
+    * **The Full-Adder Trap:** Spent a long time trying to build a literal hardware full-adder in software using truth tables. It was overly complex and failed on negative numbers due to sign-extension edge cases.
+    * **The Base-10 Epiphany:** The optimal approach calculates the "base sum" and the "carries" separately, then adds them together until there are no carries left. This is best visualized in base-10:
+        * `999 + 999`
+        * Base sum (ignoring carries): `9+9=8`, `9+9=8`, `9+9=8` $\rightarrow 888$
+        * Carries: `9+9` generates a `1`, shifted left $\rightarrow 1110$
+        * Next pass: `888 + 1110`. 
+        * Base sum: `8+0=8`, `8+1=9`, `8+1=9`, `0+1=1` $\rightarrow 1998$.
+        * Carry: $0$. 
+        * Since the carry is $0$, the loop terminates. The exact same cascading logic applies to base-2 with `^` and `&`.
