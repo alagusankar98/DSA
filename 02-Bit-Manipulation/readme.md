@@ -23,9 +23,14 @@ When tackling Bit Manipulation problems, keep these core patterns in mind:
 
 * **Cumulative XOR:** Used to find missing or singular elements by canceling out pairs.
 * **Bit Masking:** Isolating specific bits. To check if the $i$-th bit is set, use `(n & (1 << i)) != 0`.
-* **Setting a Bit:** `n = n | (1 << i)`
-* **Clearing a Bit:** `n = n & ~(1 << i)`
-* **Toggling a Bit:** `n = n ^ (1 << i)`
+* **Setting a Bit:** `n = n | (1 << i)`.
+* **Clearing a Bit:** `n = n & ~(1 << i)`.
+* **Toggling a Bit:** `n = n ^ (1 << i)`.
+* **Brian Kernighan's Algorithm (`n & (n - 1)`):** Instantly deletes the rightmost `1` bit. This is the ultimate "skip the zeros" trick for counting bits efficiently.
+* **Bitwise Addition (Half-Adder):** To add numbers without the `+` operator, use `a ^ b` to find the base sum and `(a & b) << 1` to generate the carry. Repeat until the carry is 0.
+* **DP + Bit Shifting:** When iterating through a range of numbers to find bit properties, right-shifting a number (`i >> 1`) maps it to a smaller, previously calculated subproblem.
+* **Bit-by-Bit Construction:** To reverse or build a binary number, extract the Least Significant Bit (LSB) with `n & 1`, left-shift your result buffer, and append the bit using bitwise OR (`|`).
+* **Safe Shifting (UB/Overflow):** Right-shifting negative numbers fills with `1`s (sign extension), which causes infinite loops. Always cast to an `unsigned int` before calculating carries to avoid undefined behavior.
 
 ---
 
