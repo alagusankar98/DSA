@@ -56,3 +56,16 @@ When tackling Arrays & Hashing problems, keep these patterns in mind:
     * Had the correct conceptual approach (frequency counting) but initially fell into the trap of using a heavy, general-purpose container (`unordered_map`) for a strictly bounded problem.
     * Missed the lowest-hanging optimization (the early-exit size check).
     * Learned how to leverage modern C++ paradigms (`string_view` and `ranges::all_of`) to write code that is both highly optimized at the hardware level and incredibly readable.
+
+### [3] Two Sum
+
+* **The Core Pattern:** One-Pass Hash Map. Iterate through the array, calculate the needed complement (`target - nums[i]`), and check if it exists in the map. If it does, you have your pair. If not, add the current number and its index to the map and continue.
+* **The "Gotcha":**
+    * **Inserting the Wrong Value:** A classic brain-slip is inserting the complement (`target - nums[i]`) into the map instead of the actual number (`nums[i]`). The map must act as a historical record of numbers you have *actually seen*, not numbers you are hoping to find.
+    * **Modern C++ Insertion (`try_emplace`):** Using `.insert(std::make_pair(...))` is an older C++ pattern. In modern C++ (C++17+), prefer `.try_emplace(key, value)` for conditional insertions. It checks for the key first and completely avoids constructing the value object if the key already exists. If you strictly want to insert-or-overwrite, use `map[key] = value`.
+    * **Missing `.reserve()`:** Just like with `unordered_set`, an `unordered_map` needs its capacity reserved to avoid rehashing. Since the worst-case scenario stores every element, call `map.reserve(nums.size())` before the loop.
+    * **Type Casting:** Again, rely on `std::ssize(nums)` to get a signed integer for loop indices, rather than cluttering the code with `static_cast<int>(nums.size())`.
+* **Time & Space Complexity:** $O(N)$ Time / $O(N)$ Space.
+* **The Struggle & Insights:**
+    * Successfully recognized the one-pass optimization: checking for the complement and inserting the current number can happen in the exact same loop.
+    * Optimized the map lookup by capturing the iterator from `.find()` (`auto it = map.find(...)`) rather than using `.contains()` followed by a redundant index lookup (`map[...]`).
