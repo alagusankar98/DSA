@@ -69,3 +69,18 @@ When tackling Arrays & Hashing problems, keep these patterns in mind:
 * **The Struggle & Insights:**
     * Successfully recognized the one-pass optimization: checking for the complement and inserting the current number can happen in the exact same loop.
     * Optimized the map lookup by capturing the iterator from `.find()` (`auto it = map.find(...)`) rather than using `.contains()` followed by a redundant index lookup (`map[...]`).
+
+### [4] Group Anagrams
+
+* **The Core Pattern:** Custom Hash Function + Frequency Array. Instead of sorting strings to use as keys, create a `std::array<uint8_t, 26>` to count character frequencies. Use a custom hash functor to hash this array, allowing $O(K)$ key generation instead of $O(K \log K)$.
+* **The "Gotcha":**
+    * **Custom Hash Functor `const`ness:** `std::unordered_map` requires the hashing functor's `operator()` to be marked as `const`. If you forget it (e.g., writing `size_t operator()(const array& a)` instead of `size_t operator()(const array& a) const`), the compiler will throw a massive template error.
+    * **Operator Precedence in Hashing:** A standard string-style hash algorithm is `hash = hash * 31 + val`. Writing `hash *= 31 + val` actually evaluates as `hash = hash * (31 + val)`, completely changing the hash distribution and potentially causing massive collisions.
+    * **MATLAB Syntax Bleed:** In C++, `~` is the bitwise NOT operator, not a placeholder for ignored variables. To ignore values in C++ (like the key when iterating a map), you either just name it a dummy variable (e.g., `for (auto& [ignore, group] : map)`) or use `std::ignore` with `std::tie` if not using structured bindings.
+    * **Optimal Sizing:** If the problem constraints state that strings are at most 100 characters long, an 8-bit unsigned integer (`uint8_t`, max 255) is the perfect size for the frequency array. Using `uint16_t` or `int` doubles or quadruples the memory footprint of every key for no reason.
+    * **Move Semantics vs. `const`:** You cannot move from a `const` reference. If the input array is `const vector<string>&`, you must copy the strings into your map. However, when moving the grouped vectors *out* of your map into the final `vector<vector<string>>`, you absolutely should use `std::move(pair.second)` since the map is a local mutable variable.
+* **Time & Space Complexity:** $O(N \cdot K)$ Time (where $N$ is the number of strings, $K$ is the maximum string length) / $O(N \cdot K)$ Space.
+* **The Struggle & Insights:**
+    * Identified that sorting strings is suboptimal and pivoted to frequency arrays. Since C++ doesn't natively hash `std::array`, writing a custom hash struct was necessary.
+    * The custom hash loop setup: Start with a prime base (e.g., 17), multiply by another prime (31), and add the value. 
+    * Realized the importance of using range-based for loops (`for (char c : s)`) over standard indexed loops for cleaner, less error-prone iteration when you only need the values.

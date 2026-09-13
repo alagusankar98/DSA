@@ -12,8 +12,8 @@ std::vector<std::vector<std::string>> groupAnagrams(const std::vector<std::strin
     anagramMap.reserve(strs.size());
     for(const auto& str : strs){
         std::array<uint16_t, 26> charCount = {0};
-        for(size_t i = 0; i < str.size(); i++){
-            charCount[str[i] - 'a']++;
+        for(const char c : str){
+            charCount[c - 'a']++;
         }
 
         anagramMap[charCount].push_back(str);
@@ -21,7 +21,7 @@ std::vector<std::vector<std::string>> groupAnagrams(const std::vector<std::strin
 
     std::vector<std::vector<std::string>> resultVector;
     resultVector.reserve(anagramMap.size());
-    for(const auto& [_, val]: anagramMap){
+    for(auto& [_, val]: anagramMap){
         resultVector.push_back(val);
     }
     return resultVector;

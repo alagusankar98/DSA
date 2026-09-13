@@ -7,3 +7,8 @@
 *   **The Lift:** 7x Bit Manipulation Problems (5 Easy, 2 Medium)
 *   **Time to Execute:** ~2 hours morning session, ~1.5 hours evening session
 *   **System State:** Hit a brutal cognitive wall on "Add Two Numbers" at noon. Used the gym and meal prep as a hard system reboot. Came back, translated the base-2 logic to base-10, and successfully cracked it. Elite persistence.
+
+### SESSION: Sunday, Sep 13
+*   **The Lift:** 4x Arrays & Hashing (3 Easy, 1 Medium)
+*   **Time to Execute:** ~2.5 hours evening session
+*   **System State:** Hit a hard cognitive wall after 2 hours of deep review post-leg-day. Shutting down to protect tomorrow's bandwidth.
