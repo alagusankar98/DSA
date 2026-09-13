@@ -42,3 +42,17 @@ When tackling Arrays & Hashing problems, keep these patterns in mind:
     * **CPU Cache Penalties:** Realized that `unordered_set` is heavily cache-unfriendly due to its node-based (linked-list) backend. 
     * **Pass-by-Value vs. Internal Copy:** Taking a parameter by value (`vector<int> nums`) in the function signature is functionally different from taking a `const vector<int>&` and copying it internally. Passing by value allows the *caller* to optimize. If the caller passes a temporary array or uses `std::move()`, the compiler will completely elide the copy. An internal copy forces a memory allocation every single time.
     * **Elegant STL:** Discovered `std::adjacent_find(nums.begin(), nums.end()) != nums.end()` as the cleanest way to check for adjacent duplicates after sorting.
+
+### [2] Valid Anagram
+
+* **The Core Pattern:** Frequency Counter using a Fixed-Size Array. Increment counts for the first string, decrement for the second, and verify all counts remain exactly zero.
+* **The "Gotcha":**
+    * **The Length Guard:** Always start with `if (s.size() != t.size()) return false;`. This $O(1)$ check frequently prevents unnecessary $O(N)$ traversals.
+    * **`std::string_view`:** For read-only string parameters, C++17's `std::string_view` is strictly superior to `const std::string&`. It is a lightweight non-owning view that completely avoids accidental heap allocations or copies, especially when string literals are passed.
+    * **Array vs. Map:** Since the key domain is bounded to exactly 26 lowercase English letters, `std::unordered_map` is massive overkill. It allocates nodes on the heap and ruins data locality. Using a zero-initialized stack array (`std::array<int, 26> counts = {0};`) is infinitely faster and allows the CPU prefetcher to operate perfectly.
+    * **Modern C++ Algorithms:** Instead of writing a manual `for` loop to verify if all array elements are `0`, use C++20's `std::ranges::all_of`. It takes the container and a lambda: `std::ranges::all_of(counts, [](int c){ return c == 0; });`. It perfectly signals your intent to anyone reading the code.
+* **Time & Space Complexity:** O(N) Time / O(1) Space (since the array is always exactly 26 elements, space is constant regardless of string size).
+* **The Struggle & Insights:**
+    * Had the correct conceptual approach (frequency counting) but initially fell into the trap of using a heavy, general-purpose container (`unordered_map`) for a strictly bounded problem.
+    * Missed the lowest-hanging optimization (the early-exit size check).
+    * Learned how to leverage modern C++ paradigms (`string_view` and `ranges::all_of`) to write code that is both highly optimized at the hardware level and incredibly readable.
