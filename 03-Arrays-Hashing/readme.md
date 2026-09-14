@@ -12,6 +12,12 @@
 * **`std::sort`:** Runs in $O(N \log N)$ time. By default, it sorts in ascending order using `operator<`.
 * **`std::adjacent_find`:** Runs in $O(N)$ time. Returns an iterator to the first element that is equal to the element immediately following it.
 
+### API Contracts & Quirks (Strings & Views)
+* **`std::string_view` Null-Termination:** A `string_view` is a lightweight, non-owning view over a character sequence. It is **not** guaranteed to be null-terminated. This means you cannot safely pass `.data()` to legacy C-functions or standard functions like `std::stoull()` without risking buffer overruns. 
+* **High-Performance Parsing (`std::from_chars`):** Instead of `stoull()`, use `<charconv>`'s `std::from_chars()`. It takes a start pointer, an end pointer, and a stack-allocated output variable. It returns a result struct containing `.ptr` (pointing to the first unparsed character). It performs no heap allocations and throws no exceptions.
+* **String Concatenation (`+` vs `.append()`):** Using the `+` operator (e.g., `s = s + "a"`) constructs a brand new temporary string on the stack on every invocation. When building strings in a loop, always use `.append()` or `+=` (ideally combined with `.reserve()`) to modify the string directly in memory without unnecessary allocations.
+* **In-Place Construction (`emplace_back`):** You can construct a `std::string` directly inside a `std::vector` to bypass temporary objects entirely. For example, `vec.emplace_back(ptr, length)` uses the `char*` and `size_t` directly to construct the string at its final destination.
+
 ### Priority Queue / Heaps (`std::priority_queue`)
 * **Under the Hood:** Implemented as a complete binary tree layered over a flat `std::vector`. A parent node strictly has higher priority than its children (e.g., in a Max Heap, parent > children), but there is no specific ordering between the left and right children.
     * Mathematical mapping: Given a parent at index `i`, its left child is at `2*i + 1` and right child is at `2*i + 2`.
@@ -124,3 +130,17 @@ When tackling Arrays & Hashing problems, keep these patterns in mind:
 * **The Struggle & Insights:**
     * **Understanding Heaps:** Learned that a heap is essentially a tree conceptually, but mathematically mapped to a flat array/vector for incredible performance and cache locality. 
     * **Efficient Pruning:** Realized the power of actively pruning a Min Heap to size `k` during insertion. This guarantees that only the top `k` most frequent elements remain, significantly optimizing time compared to sorting all frequencies.
+
+### [6] Encode and Decode Strings
+
+* **The Core Pattern:** Length-Prefixed Serialization. Treat the array of strings like a network payload. Encode them by prepending the length of the string followed by a delimiter (e.g., `5#hello4#word`). Decode by reading the numerical length, skipping the delimiter, extracting the string using pointer arithmetic, and advancing the pointer.
+* **The "Gotcha":**
+    * **The Null-Termination Trap:** When decoding, using `std::string_view` is optimal for performance, but it breaks standard parsing tools like `std::stoull()` because the view is not null-terminated.
+    * **Mastering `std::from_chars`:** Because `stoull()` is off the table, you must use `std::from_chars(start_ptr, end_ptr, out_val)`. You need to calculate the end pointer using `view.data() + view.size()`. The function writes the parsed number into `out_val` and returns a struct containing a pointer to the delimiter (the first non-numerical character).
+    * **String Accumulation Penalty:** When encoding, avoid using the `+` operator to combine lengths, delimiters, and strings. Pre-calculate (or safely estimate) the total required length, call `.reserve()` on the accumulator string, and use `.append()` to construct the encoded result in-place.
+* **Time & Space Complexity:** 
+    * **Encode:** $O(N)$ Time (where $N$ is total characters) / $O(1)$ Space (excluding the output string).
+    * **Decode:** $O(N)$ Time / $O(N)$ Space (for the output array of strings).
+* **The Struggle & Insights:**
+    * **First Pass Inefficiencies:** Initially used `std::string::find()`, `std::stoull()`, and `std::string::substr()`. While logically correct, it created multiple unnecessary string copies and heap allocations.
+    * **Pointer Arithmetic Elegance:** Refactored the solution to use direct pointer manipulation (`.data()`), `from_chars`, and `vector::emplace_back(ptr, len)`. This approach works directly with memory, bypassing all temporary string constructions and bringing the runtime extremely close to the metal.
