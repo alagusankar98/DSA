@@ -5,28 +5,20 @@ bool isValidSudoku(const std::vector<std::vector<char>>& board) {
 
     for(size_t i = 0; i < board.size(); i++){
         for(size_t j = 0; j < board[i].size(); j++){
-            uint8_t digit = board[i][j] - '0';
-            if (!(digit > 0 && digit <= 9)) continue;
+            if (board[i][j] == '.') continue;
+                
+            const uint8_t digit = board[i][j] - '1';
+            const size_t currentBoxIdx = 3 * (j / 3) + (i/3);
+            const uint16_t mask = (1 << digit);
 
             // Check Row flag
-            if(((rowFlags[i] >> digit) & 1) > 0){
+            if((rowFlags[i] | columnFlags[j] | boxFlags[currentBoxIdx]) & mask){
                 return false;
             }
 
-            // Check Column flag
-            if(((columnFlags[j] >> digit) & 1) > 0){
-                return false;
-            }
-
-            // Check Box flag
-            size_t currentBoxIdx = 3 * (j / 3) + (i/3);
-            if(((boxFlags[currentBoxIdx] >> digit) & 1) > 0){
-                return false;
-            }
-
-            rowFlags[i] = rowFlags[i] | (1 << digit);
-            columnFlags[j] = columnFlags[j] | (1 << digit);
-            boxFlags[currentBoxIdx] = boxFlags[currentBoxIdx] | (1 << digit);
+            rowFlags[i] = rowFlags[i] | mask;
+            columnFlags[j] = columnFlags[j] | mask;
+            boxFlags[currentBoxIdx] = boxFlags[currentBoxIdx] | mask;
         }
     }
     return true;

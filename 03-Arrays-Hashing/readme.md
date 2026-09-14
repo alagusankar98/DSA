@@ -162,3 +162,18 @@ When tackling Arrays & Hashing problems, keep these patterns in mind:
 * **The Struggle & Insights:**
     * **The Condensation Trap:** Spent a long time trying to condense the logic into a single complex equation or loop. Realizing that the problem naturally decouples into "everything before" and "everything after" was the key breakthrough.
     * **Index Alignment:** Visualizing a size 4 array helped: index 3 strictly needs the accumulated product of indices `[0, 1, 2]`. This clarified why the running product is accumulated *after* assigning it to the result array for the current index, or running iteration backwards from $N-1$ to update previous indices with the trailing product.
+
+### [8] Valid Sudoku
+
+* **The Core Pattern:** Bitmasking for State Tracking. A Sudoku board requires checking rows, columns, and 3x3 boxes for duplicates. Instead of using nine 9x9 boolean arrays (or hash sets) for tracking, use three arrays of 9 `uint16_t` integers: `uint16_t rows[9]`, `cols[9]`, `boxes[9]`. Since `uint16_t` has 16 bits, it acts as an ultra-fast, memory-dense hash set for digits 1-9 by setting the $N$-th bit.
+* **The "Gotcha":**
+    * **Constraint Guarantees:** If the problem strictly defines the input domain (e.g., characters are strictly `.` or `'1'` to `'9'`), don't over-engineer guards like `if (c >= '1' && c <= '9')`. Simply `if (c == '.') continue;` and assume the rest are valid digits.
+    * **Zero-Indexing the Bitmask:** To map characters to bits, use `board[i][j] - '1'` rather than `- '0'`. This perfectly maps `'1'` to bit 0 and `'9'` to bit 8, making full use of the bit space without leaving bit 0 empty.
+    * **Pre-compute and Reuse Masks:** Don't calculate `(1 << digit)` three separate times for the row, col, and box. Calculate it once (`uint16_t mask = 1 << digit;`) and reuse it to save CPU cycles.
+    * **Combine Bitwise Checks:** Instead of writing three separate `if` statements to check if the bit is set in the row, column, and box, combine them using bitwise OR: `if ((rows[i] | cols[j] | boxes[box_idx]) & mask) return false;`. This checks if *any* of the regions have the bit set in a single, blazing-fast hardware instruction, reducing branching.
+* **Time & Space Complexity:** 
+    * Time: $O(1)$ — The board is strictly 9x9, meaning $81$ iterations, which is constant time.
+    * Space: $O(1)$ — Three arrays of 9 `uint16_t` integers consume exactly 54 bytes total. This effortlessly fits entirely inside a single L1 CPU cache line.
+* **The Struggle & Insights:**
+    * Recalling past struggles with the 3x3 box indexing math `(i / 3) * 3 + (j / 3)` paid off, making the matrix traversal smooth.
+    * **Code Review Epiphanies:** Realized how much cleaner and faster the code becomes when leveraging bitwise OR `|` to flatten multiple condition checks, and how reusing calculated values (like the bitmask) is a critical optimization habit.
