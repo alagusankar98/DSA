@@ -12,6 +12,23 @@
 * **`std::sort`:** Runs in $O(N \log N)$ time. By default, it sorts in ascending order using `operator<`.
 * **`std::adjacent_find`:** Runs in $O(N)$ time. Returns an iterator to the first element that is equal to the element immediately following it.
 
+### Priority Queue / Heaps (`std::priority_queue`)
+* **Under the Hood:** Implemented as a complete binary tree layered over a flat `std::vector`. A parent node strictly has higher priority than its children (e.g., in a Max Heap, parent > children), but there is no specific ordering between the left and right children.
+    * Mathematical mapping: Given a parent at index `i`, its left child is at `2*i + 1` and right child is at `2*i + 2`.
+* **Performance:** 
+    * **Access:** $O(1)$ to get the highest priority element using `.top()` (always at the `0`th index).
+    * **Insertion:** $O(\log N)$ using `.push()` or `.emplace()`. The element is added to the end of the array and "sifts up" the tree to its correct position.
+    * **Deletion:** $O(\log N)$ using `.pop()`. The root is removed, replaced by the last element, which then "sifts down".
+* **Visualization (Max Heap):**
+    ```text
+    Tree Structure:          Flat Vector Array:
+         [10]                Index:   0   1   2   3   4   5
+        /    \               Value: [10,  7,  8,  2,  4,  5]
+      [7]    [8]
+     /  \    /
+   [2]  [4][5]
+    ```
+
 ---
 
 ## 2. General Summary / Quick Reference
@@ -84,3 +101,26 @@ When tackling Arrays & Hashing problems, keep these patterns in mind:
     * Identified that sorting strings is suboptimal and pivoted to frequency arrays. Since C++ doesn't natively hash `std::array`, writing a custom hash struct was necessary.
     * The custom hash loop setup: Start with a prime base (e.g., 17), multiply by another prime (31), and add the value. 
     * Realized the importance of using range-based for loops (`for (char c : s)`) over standard indexed loops for cleaner, less error-prone iteration when you only need the values.
+
+### [5] Top K Frequent Elements
+
+* **The Core Pattern:** Frequency Counter + Min Heap. 
+    1. Build a hash map of `number -> frequency`. 
+    2. Iterate through the map and push pairs of `[frequency, number]` into a Min Heap. 
+    3. Keep the heap size strictly at `k` by popping the top (smallest frequency) element whenever the size exceeds `k`. 
+    4. Extract the remaining `k` elements from the heap into the final vector.
+    * *Alternative Approaches Considered:* 
+        * **Bucket Sort:** An array of vectors where the index represents frequency. $O(N)$ time.
+        * **Ordered Map:** `std::map<int, std::vector<int>>` mapping frequencies to numbers, iterating backwards from the largest key.
+* **The "Gotcha":**
+    * **Max vs Min Heap Defaults:** By default, `std::priority_queue` uses `std::less`, which actually creates a **Max Heap** (largest element has highest priority). To create a Min Heap, you must explicitly use `std::greater`.
+    * **Template Instantiation:** When providing a custom comparator to the template parameters, pass the *type* without parentheses: `std::priority_queue<T, vector<T>, std::greater<T>>`, NOT `std::greater<T>()`.
+    * **Push vs. Emplace:** Use `.emplace(freq, num)` instead of `.push({freq, num})`. `.emplace()` constructs the object directly inside the underlying container, avoiding redundant stack allocations and copies.
+    * **No `.reserve()`:** Even though `std::priority_queue` is backed by a `std::vector`, it does *not* expose a `.reserve()` method. You cannot pre-allocate its capacity.
+    * **Verbose Types:** Using `std::pair<int, int>` everywhere gets messy. Use a type alias like `using Pair = std::pair<int, int>;` to keep the template parameters and code clean.
+* **Time & Space Complexity:** 
+    * Time: $O(N \log K)$ — $O(N)$ to build the frequency map, and inserting up to $N$ unique elements into a heap of max size $K$ takes $O(N \log K)$.
+    * Space: $O(N)$ — $O(N)$ for the hash map to store frequencies, and $O(K)$ for the heap.
+* **The Struggle & Insights:**
+    * **Understanding Heaps:** Learned that a heap is essentially a tree conceptually, but mathematically mapped to a flat array/vector for incredible performance and cache locality. 
+    * **Efficient Pruning:** Realized the power of actively pruning a Min Heap to size `k` during insertion. This guarantees that only the top `k` most frequent elements remain, significantly optimizing time compared to sorting all frequencies.
