@@ -177,3 +177,16 @@ When tackling Arrays & Hashing problems, keep these patterns in mind:
 * **The Struggle & Insights:**
     * Recalling past struggles with the 3x3 box indexing math `(i / 3) * 3 + (j / 3)` paid off, making the matrix traversal smooth.
     * **Code Review Epiphanies:** Realized how much cleaner and faster the code becomes when leveraging bitwise OR `|` to flatten multiple condition checks, and how reusing calculated values (like the bitmask) is a critical optimization habit.
+
+### [9] Longest Consecutive Sequence
+
+* **The Core Pattern:** Hash Set and Sequence Building. Dump the array into a `std::unordered_set` to eliminate duplicates and enable $O(1)$ lookups. Iterate over the set, and for each number, try to build a sequence by repeatedly checking if `num + 1` exists, keeping track of the maximum length found.
+* **The "Gotcha":**
+    * **The $O(N^2)$ Trap (Time Limit Exceeded):** If you try to build a sequence starting from *every* number, a massive contiguous array like `[1, 2, ..., 19999]` will cause the inner loop to run 19999 times for `1`, then 19998 times for `2`, then 19997 times for `3`, etc. This degenerates into $O(N^2)$ time complexity.
+    * **The Sequence Starter Check:** To achieve strict $O(N)$ time, only attempt to build a sequence if the current number is the absolute *start* of a sequence. You can mathematically verify this by checking if `num - 1` does *not* exist in the set (`if (!set.contains(num - 1))`). This ensures the inner `while` loop only ever processes each number in a sequence exactly once.
+* **Time & Space Complexity:** 
+    * Time: $O(N)$ — Creating the set takes $O(N)$. Iterating through the set takes $O(N)$. Because of the sequence starter check, the inner `while` loop strictly visits each element across all sequences exactly once. Therefore, total time is bounded by $O(N)$.
+    * Space: $O(N)$ — To store the unique numbers in the `unordered_set`.
+* **The Struggle & Insights:**
+    * Initially blamed a failed large test case on a missing `.reserve()` optimization for the hash set, failing to realize the core logic was fundamentally $O(N^2)$.
+    * **The Breakthrough:** Learned how a single $O(1)$ look-behind check (`num - 1`) can mathematically transform a nested loop from quadratic $O(N^2)$ time into linear $O(N)$ time by preventing redundant work.

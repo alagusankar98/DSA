@@ -3,16 +3,18 @@ int longestConsecutive(const std::vector<int>& nums) {
     uniqueNums.reserve(nums.size());
     
     for(const int num : nums){
-        uniqueNums.emplace(num);
+        uniqueNums.insert(num);
     }
 
     int longestSequence = 0;
     for(int num : uniqueNums){
-        int count = 1;
-        while(uniqueNums.contains(++num)){
-            count++;
+        if(!uniqueNums.contains(num - 1)){
+            int count = 1;
+            while(uniqueNums.contains(++num)){
+                count++;
+            }
+            longestSequence = std::max(count, longestSequence);
         }
-        longestSequence = std::max(count, longestSequence);
     }
 
     return longestSequence;
