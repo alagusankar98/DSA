@@ -12,7 +12,9 @@
 * **`std::sort`:** Runs in $O(N \log N)$ time. By default, it sorts in ascending order using `operator<`.
 * **`std::adjacent_find`:** Runs in $O(N)$ time. Returns an iterator to the first element that is equal to the element immediately following it.
 
-### API Contracts & Quirks (Strings & Views)
+### C++ Quirks & Best Practices
+* **NRVO (Named Return Value Optimization):** Do not use `std::move` when returning a local variable (e.g., `return std::move(result);`). The C++ compiler automatically performs NRVO, meaning it constructs the local variable directly in the caller's memory space, completely eliding the copy or move. Using `std::move` disables this optimization and forces a move operation, which is strictly worse.
+* **Vector Initialization (Size vs Capacity):** Initializing a vector with a size (e.g., `vector<int> res(nums.size(), 1);`) allows direct index access (`res[i] = ...`) rather than using `.reserve()` and `.push_back()`. It also automatically value-initializes the elements (e.g., to `1`).
 * **`std::string_view` Null-Termination:** A `string_view` is a lightweight, non-owning view over a character sequence. It is **not** guaranteed to be null-terminated. This means you cannot safely pass `.data()` to legacy C-functions or standard functions like `std::stoull()` without risking buffer overruns. 
 * **High-Performance Parsing (`std::from_chars`):** Instead of `stoull()`, use `<charconv>`'s `std::from_chars()`. It takes a start pointer, an end pointer, and a stack-allocated output variable. It returns a result struct containing `.ptr` (pointing to the first unparsed character). It performs no heap allocations and throws no exceptions.
 * **String Concatenation (`+` vs `.append()`):** Using the `+` operator (e.g., `s = s + "a"`) constructs a brand new temporary string on the stack on every invocation. When building strings in a loop, always use `.append()` or `+=` (ideally combined with `.reserve()`) to modify the string directly in memory without unnecessary allocations.
@@ -144,3 +146,19 @@ When tackling Arrays & Hashing problems, keep these patterns in mind:
 * **The Struggle & Insights:**
     * **First Pass Inefficiencies:** Initially used `std::string::find()`, `std::stoull()`, and `std::string::substr()`. While logically correct, it created multiple unnecessary string copies and heap allocations.
     * **Pointer Arithmetic Elegance:** Refactored the solution to use direct pointer manipulation (`.data()`), `from_chars`, and `vector::emplace_back(ptr, len)`. This approach works directly with memory, bypassing all temporary string constructions and bringing the runtime extremely close to the metal.
+
+### [7] Product of Array Except Self
+
+* **The Core Pattern:** Prefix and Suffix Arrays (Two-Pass Optimization). For any index `i`, the answer is the product of all elements to its left (prefix) multiplied by all elements to its right (suffix). 
+    1. **Prefix Pass:** Traverse left-to-right. Store the running prefix product directly in the output array.
+    2. **Suffix Pass:** Traverse right-to-left. Use a single scalar variable to track the running suffix product, multiply it with the existing value in the output array, and then update the suffix variable.
+* **The "Gotcha":**
+    * **Avoid `std::move` on Return:** When returning the result vector, simply `return res;`. Writing `return std::move(res);` disables Named Return Value Optimization (NRVO), forcing a move constructor rather than letting the compiler construct the vector directly in the caller's memory space.
+    * **Vector Initialization:** Initialize the output vector with its size and a default value of `1`: `std::vector<int> res(nums.size(), 1);`. This allocates memory and default-initializes everything upfront, allowing direct index assignment (`res[i] = ...`) or `.front() = 1` rather than juggling `.reserve()` and `.push_back()`, making the two-pass logic trivial.
+    * **Initial States:** The prefix product before index 0 is `1` (which can be initialized using `res.front() = 1`). The suffix product after the last index is also `1`.
+* **Time & Space Complexity:** 
+    * Time: $O(N)$ — Exactly two passes over the array.
+    * Space: $O(1)$ extra space (since the output array does not count towards auxiliary space).
+* **The Struggle & Insights:**
+    * **The Condensation Trap:** Spent a long time trying to condense the logic into a single complex equation or loop. Realizing that the problem naturally decouples into "everything before" and "everything after" was the key breakthrough.
+    * **Index Alignment:** Visualizing a size 4 array helped: index 3 strictly needs the accumulated product of indices `[0, 1, 2]`. This clarified why the running product is accumulated *after* assigning it to the result array for the current index, or running iteration backwards from $N-1$ to update previous indices with the trailing product.

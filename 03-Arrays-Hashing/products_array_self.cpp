@@ -1,9 +1,8 @@
 std::vector<int> productExceptSelf(const std::vector<int>& nums) {
-    if(nums.empty()) return {};
-    std::vector<int> productArray(nums.size());
-    productArray.front() = 1;
     const int n = std::ssize(nums);
-
+    std::vector<int> productArray(n);
+    
+    productArray.front() = 1;
     for(int i = 1; i < n; i++){
         productArray[i] = productArray[i-1] * nums[i-1];
     }
@@ -14,5 +13,5 @@ std::vector<int> productExceptSelf(const std::vector<int>& nums) {
         productArray[i-1] *= product;
     }
 
-    return std::move(productArray);
+    return productArray;
 }
