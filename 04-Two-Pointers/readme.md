@@ -37,3 +37,14 @@ When tackling Two Pointers problems, keep these core patterns in mind:
 * **The Struggle & Insights:**
     * Transitioning to C++20 `std::string_view` simplifies passing the string, but remembering it doesn't need `const` takes some unlearning. 
     * Refined the mechanics of skipping elements. Found the optimal setup: an outer `while (left < right)`, followed by two inner `while` loops for skipping invalid chars (with their own `left < right` bounds checks), followed by a lower-case comparison.
+
+### [2] Two Sum II - Input Array Is Sorted
+
+* **The Core Pattern:** Opposite Ends Two-Pointer. Calculate `sum = nums[left] + nums[right]`. If the sum is too large, decrement `right`. If it's too small, increment `left`. 
+* **The "Gotcha":**
+    * **1-Indexed Return Constraints:** Always read the problem constraints carefully. Returning exactly what you are asked for (e.g., `return {left + 1, right + 1};`) prevents failing simple test cases.
+    * **The Subtraction Trap:** Avoid calculating the difference (e.g., `int diff = (nums[left] + nums[right]) - target`). While mathematically sound, it introduces an unnecessary subtraction instruction for the ALU and opens the door for integer overflow/underflow if the values are extreme. Calculate `sum` and compare it directly to `target`.
+* **Time & Space Complexity:** O(N) Time / O(1) Space.
+* **The Struggle & Insights:**
+    * **Visualizing the Proof:** Struggled to trust that moving the pointers wouldn't accidentally skip the target pair. The logic holds because the array is sorted. If `sum > target`, the current `right` value is too large even when paired with the *smallest* available value (`left`). It will inherently be too large for any other remaining value, meaning `right` can be permanently discarded. The same logic applies inversely for `left` when `sum < target`.
+    * **ALU Optimization:** Iterated on the condition checks, moving from a multi-step difference calculation to a clean, highly optimized direct comparison.
