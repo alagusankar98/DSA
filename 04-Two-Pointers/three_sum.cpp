@@ -3,6 +3,7 @@ std::vector<std::vector<int>> threeSum(std::vector<int>& nums) {
     std::sort(nums.begin(), nums.end());
     const int n = std::ssize(nums);
     for(int i = 0; i < n; i++){
+        if(nums[i] > 0) break; // Smallest number became positive
         if((i > 0) && (nums[i] == nums[i-1])){
             continue;
         }
