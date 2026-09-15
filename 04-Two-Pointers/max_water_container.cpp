@@ -3,12 +3,14 @@ int maxArea(vector<int>& heights) {
     int right = std::ssize(heights) - 1;
     int maxArea = 0;
     while(left < right){
-        int currentArea = std::min(heights[left], heights[right]) * (right - left);
+        int heightLeft = heights[left];
+        int heightRight = heights[right];
+        int currentArea = std::min(heightLeft, heightRight) * (right - left);
         maxArea = std::max(maxArea, currentArea);
-        if(heights[left] > heights[right]){
-            right--;
+        if(heightLeft > heightRight){
+            while((left < right) && (heights[right] <= heightRight)) right--;
         } else {
-            left++;
+            while((left < right) && (heights[left] <= heightLeft)) left++;
         }
     }
     return maxArea;

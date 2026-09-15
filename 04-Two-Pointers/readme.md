@@ -60,3 +60,16 @@ When tackling Two Pointers problems, keep these core patterns in mind:
 * **The Struggle & Insights:**
     * **The "Ah-Ha" Moment:** Initially stared at the problem without realizing the optimal solution. The realization was that by fixing one number (the anchor), the problem perfectly reduces down to the standard Two Sum problem, which is easily solved with two pointers *if* the array is sorted.
     * **Understanding Inner Skips:** Struggled with why we only skip inner duplicates when `sum == 0`. Realized that skipping them generically outside of this condition could break valid solutions where duplicates are required to sum to the target, whereas skipping *after* a successful find prevents identical triplets.
+
+### [4] Container With Most Water
+
+* **The Core Pattern:** Opposite Ends Two-Pointer. Start pointers at the edges (`left = 0`, `right = size - 1`). Calculate the current area: `min(height[left], height[right]) * (right - left)`. To maximize the area, always move the pointer that points to the shorter line inward, because keeping the shorter line strictly limits the maximum possible height for any future (and narrower) container.
+* **The "Gotcha":**
+    * **Pointer Skipping Optimization:** You can heavily optimize the algorithm by skipping subsequent lines that are shorter than or equal to the line you just moved away from. However, this must be implemented carefully using inner `while` loops.
+    * **The `<=` Operator for Skipping:** When fast-forwarding, the inner condition *must* use `<=` (e.g., `while (left < right && height[left] <= heightLeft) left++;`). If you only use `<` (or try to look ahead with `height[left+1]`), you will get trapped in an infinite loop if the next line is exactly the *same* height as the current one. The pointer won't move past the duplicate, and the loop will spin forever.
+    * **Why `<=` works over `<`:** If the next line is the same height, the container's width has decreased but the bottleneck height hasn't improved. Thus, the resulting area is mathematically guaranteed to be smaller. Therefore, lines of *equal* height must also be skipped to find a taller line.
+* **Time & Space Complexity:** $O(N)$ Time / $O(1)$ Space.
+* **The Struggle & Insights:**
+    * **Initial Intuition vs Optimization:** Found the standard $O(N)$ solution quickly on the first go by just moving the smaller pointer by 1. The challenge was trying to push it further by explicitly zooming past shorter lines.
+    * **Boundary and Loop Traps:** Stumbled through several infinite loops and failed conditions (like `height[right-1] < heightRight`) during the optimization attempt. 
+    * **The "Why":** The realization was that fast-forwarding requires actively consuming the elements (using the current pointer `left` or `right` and incrementing/decrementing it *inside* the condition check or loop body), and that identical heights offer zero benefit when width is decreasing, making the `<=` operator strictly necessary for the skip logic.
