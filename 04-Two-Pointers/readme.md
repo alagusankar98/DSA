@@ -48,3 +48,15 @@ When tackling Two Pointers problems, keep these core patterns in mind:
 * **The Struggle & Insights:**
     * **Visualizing the Proof:** Struggled to trust that moving the pointers wouldn't accidentally skip the target pair. The logic holds because the array is sorted. If `sum > target`, the current `right` value is too large even when paired with the *smallest* available value (`left`). It will inherently be too large for any other remaining value, meaning `right` can be permanently discarded. The same logic applies inversely for `left` when `sum < target`.
     * **ALU Optimization:** Iterated on the condition checks, moving from a multi-step difference calculation to a clean, highly optimized direct comparison.
+
+### [3] 3Sum
+
+* **The Core Pattern:** Sort Array + Anchor and Two-Pointer. Sort the array first. Iterate through the array with an `anchor` element. For each `anchor`, run a standard Two Sum II (Opposite Ends) on the remaining elements to find a sum of `0` with the anchor.
+* **The "Gotcha":**
+    * **Duplicate Skipping (Outer Anchor):** If the current `anchor` is the same as the previous `anchor`, you must `continue` to avoid generating duplicate triplets.
+    * **Duplicate Skipping (Inner Pointers):** When a valid triplet is found (`sum == 0`), you must advance the `left` pointer and decrement the `right` pointer, then advance `left` while skipping over any duplicates to avoid identical triplets. Doing this *only* when `sum == 0` is critical; if you skip duplicates normally for every step, you might skip a valid pair where two identical numbers are required (e.g., `[-2, 1, 1]` requires both `-1`s).
+    * **Early Exit for Positive Anchor:** Because the array is sorted, if the `anchor` element becomes strictly greater than `0`, it is mathematically impossible for the sum of three numbers to ever reach `0` (since all subsequent elements will also be positive). Break the outer loop immediately to save CPU cycles.
+* **Time & Space Complexity:** $O(N^2)$ Time / $O(1)$ or $O(N)$ Space (depending on the sorting algorithm implementation).
+* **The Struggle & Insights:**
+    * **The "Ah-Ha" Moment:** Initially stared at the problem without realizing the optimal solution. The realization was that by fixing one number (the anchor), the problem perfectly reduces down to the standard Two Sum problem, which is easily solved with two pointers *if* the array is sorted.
+    * **Understanding Inner Skips:** Struggled with why we only skip inner duplicates when `sum == 0`. Realized that skipping them generically outside of this condition could break valid solutions where duplicates are required to sum to the target, whereas skipping *after* a successful find prevents identical triplets.
