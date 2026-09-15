@@ -1,16 +1,15 @@
-bool isPalindrome(string s) {
-    size_t left = 0;
-    size_t right = s.size();
+bool isPalindrome(std::string_view s) {
+    int left = 0;
+    int right = std::ssize(s) - 1;
     while(left < right){
-        if(!std::isalnum(s[left])){
+        while((left < right) && !std::isalnum(static_cast<unsigned char>(s[left]))){
             left++;
-            continue;
         }
-        if(!std::isalnum(s[right])){
+        while((left < right) && !std::isalnum(static_cast<unsigned char>(s[right]))){
             right--;
-            continue;
         }
-        if(std::toupper(s[left]) != std::toupper(s[right])) return false;
+        if (left >= right) break;
+        if(std::toupper(static_cast<unsigned char>(s[left])) != std::toupper(static_cast<unsigned char>(s[right]))) return false;
         left++;
         right--;
     }
