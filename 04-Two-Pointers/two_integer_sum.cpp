@@ -1,10 +1,10 @@
-std::vector<int> twoSum(const vector<int>& numbers, int target) {
+std::vector<int> twoSum(const std::vector<int>& numbers, int target) {
     int left = 0;
     int right = std::ssize(numbers) - 1;
     while(left < right){
-        int difference = numbers[left] + numbers[right] - target;
-        if(difference == 0) return {left+1, right+1};
-        if(difference > 0){
+        int sum = numbers[left] + numbers[right];
+        if(sum == target) return {left+1, right+1};
+        if(sum > target){
             right--;
         } else {
             left++;
