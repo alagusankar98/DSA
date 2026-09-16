@@ -73,3 +73,15 @@ When tackling Two Pointers problems, keep these core patterns in mind:
     * **Initial Intuition vs Optimization:** Found the standard $O(N)$ solution quickly on the first go by just moving the smaller pointer by 1. The challenge was trying to push it further by explicitly zooming past shorter lines.
     * **Boundary and Loop Traps:** Stumbled through several infinite loops and failed conditions (like `height[right-1] < heightRight`) during the optimization attempt. 
     * **The "Why":** The realization was that fast-forwarding requires actively consuming the elements (using the current pointer `left` or `right` and incrementing/decrementing it *inside* the condition check or loop body), and that identical heights offer zero benefit when width is decreasing, making the `<=` operator strictly necessary for the skip logic.
+
+### [5] Trapping Rain Water
+
+* **The Core Pattern:** Opposite Ends Two-Pointer with Tracking Maximums. Maintain `left` and `right` pointers, along with `leftMax` and `rightMax` variables to track the highest boundary seen from both sides. The key realization is that the water trapped above any column is determined strictly by `min(leftMax, rightMax) - height[i]`. By always moving the pointer corresponding to the smaller overall boundary (`height[left] < height[right]`), you guarantee that the *other* side's maximum is at least as high, meaning your local maximum is the true bottleneck.
+* **The "Gotcha":**
+    * **The Single Anchor Trap:** Attempting to use a single anchor index and a moving index looking for a larger boundary fails because it expects a larger right boundary that may never exist (e.g., if the array simply slopes downwards).
+    * **Branchless Optimization:** You can completely eliminate nested `if/else` checks when updating the water counter. Instead of explicitly checking if the current height is less than the max, simply update the max *first*: `leftMax = max(leftMax, height[left])`. Then immediately add `leftMax - height[left]` to your total. If the height was a new maximum, this automatically evaluates to `0` (leaving the counter unchanged), avoiding the need for an `else` statement entirely!
+* **Time & Space Complexity:** $O(N)$ Time / $O(1)$ Space.
+* **The Struggle & Insights:**
+    * **Initial Intuition:** Mind went numb initially. Tried to force the "Container With Most Water" single anchor logic, but quickly realized it breaks if the moving index never finds a taller anchor to "close" the trap. 
+    * **The "Ah-Ha" Moment:** Processed the problem during a commute and realized the absolute necessity of a *second* anchor (tracking the max from both sides). The bottleneck logic clicked: if `height[left] < height[right]`, then `left` is the strictly limiting factor regardless of what heights exist in the middle, so we can safely calculate trapped water on the `left` and move it inward.
+    * **Code Elegance:** The final logic optimization provided by a code review was brilliant. Calculating `max` first and letting `max - current` evaluate to `0` cleanly removes all inner conditional branching, making the code incredibly sleek.

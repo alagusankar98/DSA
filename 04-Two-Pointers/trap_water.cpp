@@ -9,18 +9,12 @@ int trap(const vector<int>& height) {
 
     while(left < right){
         if(height[left] < height[right]){
-            if(height[left] < leftMax){
-                totalWater += (leftMax - height[left]);
-            } else {
-                leftMax = height[left];
-            }
+            leftMax = std::max(leftMax, height[left]);
+            totalWater += (leftMax - height[left]);
             left++;
         } else {
-            if(height[right] < rightMax){
-                totalWater += (rightMax - height[right]);
-            } else {
-                rightMax = height[right];
-            }
+            rightMax = std::max(rightMax, height[right]);
+            totalWater += (rightMax - height[right]);
             right--;
         }
     }
