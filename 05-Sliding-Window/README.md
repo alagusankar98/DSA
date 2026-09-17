@@ -68,3 +68,16 @@ while (right < n) {
 * **The Struggle & Insights:**
     * **Bridging Two Pointers to Window:** Initially struggled to see how this differed from Two Pointers. Realized that instead of converging from opposite sides, both start at `0` and move right. `right` scouts ahead, and `left` snaps forward whenever a better starting point is found.
     * **Simulating the Pointer Mechanics:** Hand-traced the logic to prove it works. E.g., for `[7, 1, 5]`, `right` hits `1`, it's lower than `left` (7), so `left` jumps to the index of `1`. Then `right` moves to `5`, finding a valid profit. The caterpillar movement clicked.
+
+### [2] Longest Substring Without Repeating Characters
+
+* **The Core Pattern:** Dynamic Sliding Window + Index Cache. Expand the `right` pointer to read characters. Use a cache to store the last seen index of each character. If a duplicate is found, instantly snap the `left` pointer to the index right after the duplicate.
+* **The "Gotcha":**
+    * **The Rewind Violation:** Never move the `right` pointer backward. Doing so destroys the $O(N)$ time complexity and corrupts the window state. The sliding window strictly expands `right` forward and shrinks `left` forward.
+    * **Hardware Optimization (`std::array` vs `std::unordered_map`):** Since the ASCII space is exactly 256 characters, using a `std::unordered_map` is a massive anti-pattern. It triggers heap allocations and cache misses. A flat `std::array<int, 256>` initialized to `0` takes exactly 1KB, fits perfectly in the L1 CPU cache, and provides pure $O(1)$ pointer-arithmetic lookups.
+    * **The "Ghost Character" Trap (`std::max`):** When jumping `left` forward, you must use `left = std::max(left, cache[currentChar])`. Because the global cache remembers the *entire* string's history, looking up a character you saw previously might return an index that is *behind* your current `left` pointer. Without `std::max`, your `left` pointer would jump backward, re-introducing old duplicates into your active window (e.g., the string "abba").
+    * **The `+1` Initialization Trick:** Instead of filling the array with `-1` and doing `cache[char] + 1`, you can zero-initialize the array (`{0}`) and store `right + 1`. This allows a seamless check: `if (cache[char] != 0)` and direct assignment `left = std::max(left, cache[char])`.
+* **Time & Space Complexity:** $O(N)$ Time / $O(1)$ Space (Strictly bounded 256-element array).
+* **The Struggle & Insights:**
+    * **Map Confusion:** Initially struggled with how to track elements and defaulted to `unordered_map`, not realizing the hardware-level implications for small, fixed domains.
+    * **Sliding Window Mechanics:** First instinct was to reset `right` backward upon finding a duplicate. The breakthrough was understanding that the window only needs to *shrink* from the `left` by jumping it past the old duplicate, leaving `right` exactly where it is to continue exploring.
