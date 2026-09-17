@@ -81,3 +81,15 @@ while (right < n) {
 * **The Struggle & Insights:**
     * **Map Confusion:** Initially struggled with how to track elements and defaulted to `unordered_map`, not realizing the hardware-level implications for small, fixed domains.
     * **Sliding Window Mechanics:** First instinct was to reset `right` backward upon finding a duplicate. The breakthrough was understanding that the window only needs to *shrink* from the `left` by jumping it past the old duplicate, leaving `right` exactly where it is to continue exploring.
+
+### [3] Longest Repeating Character Replacement
+
+* **The Core Pattern:** Dynamic Window shifting to Fixed Window via Invariants. The master formula to check if a window is valid is: `[Length of Window] - [Count of Most Frequent Character] <= k`. In physical terms: `Total Letters - Popular Letters = Garbage Letters`. If `Garbage <= k`, the window is valid.
+* **The "Gotcha":**
+    * **The `if` vs `while` Optimization:** Because `right` increments by exactly `1` every iteration, the window size grows by exactly `1`. If the previous window was valid, the new window can violate the `k` constraint by *at most* `1`. Therefore, an inner `while` loop is entirely unnecessary. A simple `if` statement to increment `left` once perfectly maintains the bounds and removes a layer of CPU branch prediction overhead.
+    * **"Shift, Don't Shrink":** Because we only care about finding the *maximum* length, we don't actually need to shrink the window when it becomes invalid. When the `if` condition triggers, both `right` (at loop end) and `left` increment. The invalid window physically shifts to the right, maintaining its peak size, waiting to ingest a character that makes it valid again.
+    * **The "Historical Max" (Stale Data):** When `left` increments and kicks a character out of the window, you decrement its count in your array, but you *do not* rescan the array to decrease `maxFrequency`. Why? Because `maxFrequency` acts as a high-water mark. Since we only want to beat our current maximum window size, we mathematically cannot do that until we find a *new* character whose frequency exceeds the historical peak. Leaving the data "stale" keeps the inner loop strictly $O(1)$.
+* **Time & Space Complexity:** $O(N)$ Time / $O(1)$ Space (26-element array).
+* **The Struggle & Insights:**
+    * **Abstract Math vs Physical Frame:** Initially got lost trying to anchor the target character strictly to `s[left]`. The breakthrough was dropping the abstract math and visualizing the window as a physical box: count the most popular letter, subtract it from the total, and check if the remaining "odd ones out" can be covered by the `k` magic wands.
+    * **Discovering the Invariant:** Discovered independently that because `right` increments by 1, the garbage limit can only fail by 1. This logically eliminates the need for a `while` loop. Recognizing these mathematical invariants is the exact differentiator between a standard brute-force slider and a senior-level optimized shifting window.
