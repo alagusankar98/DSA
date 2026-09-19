@@ -1,13 +1,21 @@
 bool isValid(std::string_view s) {
-    std::stack<char, std::vector<char>> bracketStack;
-    std::unordered_map<char, char> bracketMap = {{')', '('}, {'}', '{'}, {']', '['}};
-    for(const char c : s){
-        if(auto it = bracketMap.find(c); (!bracketStack.empty()) && (it != bracketMap.end())){
-            if(bracketStack.top() != it->second) return false;
-            bracketStack.pop();
-        } else {
-            bracketStack.push(c);
+    if(s.size() % 2 != 0) return false;
+        std::vector<char> bracketStack;
+        bracketStack.reserve(s.size() / 2);
+        for(const char c : s){
+            switch(c) {
+                case '(' : bracketStack.push_back(')'); break;
+                case '[' : bracketStack.push_back(']'); break;
+                case '{' : bracketStack.push_back('}'); break;
+                case ')':
+                case '}':
+                case ']':
+                    if(bracketStack.empty() || bracketStack.back() != c) return false;
+                    bracketStack.pop_back();
+                    break;
+                default:
+                    return false;
+            }
         }
-    }
-    return bracketStack.empty();
+        return bracketStack.empty();
 }

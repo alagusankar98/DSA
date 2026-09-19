@@ -6,11 +6,13 @@ A Stack is a Last-In, First-Out (LIFO) data structure. In modern C++, you have t
 
 ### Option 1: The `std::vector` (The Bare-Metal Choice)
 * **Interface:** `push_back()`, `pop_back()`, `back()`, `empty()`.
+* **The Empty Trap (UB):** Calling `.pop_back()` or `.back()` on an empty vector is **Undefined Behavior**. You must *always* verify `!stack.empty()` before peeking or popping.
 * **Why use it?** A `std::vector` is a single contiguous block of memory. It offers the absolute best L1 cache locality. Furthermore, because it's just a vector, you can iterate over it (`for (int x : stack)`) if you get stuck in an interview and need to print your state. 
 * **The Catch:** It doesn't strictly enforce the LIFO contract. You have to enforce it through discipline.
 
 ### Option 2: `std::stack` (The Semantic Choice)
 * **Interface:** `push()`, `pop()`, `top()`, `empty()`.
+* **The Empty Trap (UB):** Exactly like vectors, calling `.pop()` or `.top()` on an empty stack is **Undefined Behavior**. It will not throw a safe exception; it will simply crash or corrupt memory. Always check `!stack.empty()`.
 * **Why use it?** It strictly enforces the LIFO contract. You cannot accidentally index into the middle of it. It immediately signals your algorithmic intent to the interviewer.
 * **The Catch:** It is a "Container Adaptor", meaning it wraps another container. By default, it wraps a `std::deque`, which allocates in chunks and has slightly worse cache locality. Furthermore, you **cannot iterate over it** to print or debug your state without destroying it.
 
@@ -53,4 +55,14 @@ Used for finding the "Next Greater" or "Previous Smaller" element, often for his
 
 ## 3. Problem Strategies & Patterns
 
-*(Problems and your insights will be added here as you solve them)*
+### [1] Valid Parentheses
+
+* **The Core Pattern:** String/Syntax Parser. Use a Stack (`std::vector`) to keep track of unclosed brackets. When you encounter a closing bracket, verify it matches the most recently opened bracket at the top of the stack.
+* **The "Gotcha":**
+    * **The Empty Stack Trap (UB):** You *must* check if the stack is `.empty()` before calling `.back()` or `.pop_back()`. If you get a closing bracket `]` as your very first character, checking `.back()` immediately causes Undefined Behavior and will crash.
+    * **Odd Length Early Return:** A valid pairing requires an even number of characters. `if (s.size() % 2 != 0) return false;` instantly drops impossible cases without processing a single character.
+    * **Push the Counterpart:** Instead of pushing the opening bracket `(` onto the stack and looking up its counterpart later, push the *expected closing bracket* `)` right now. When you actually encounter a closing bracket in the string, the verification becomes a trivial `if (stack.back() != currentChar)`.
+* **Time & Space Complexity:** $O(N)$ Time / $O(N)$ Space.
+* **The Struggle & Insights:**
+    * **Hash Maps vs `switch`:** My first instinct was to use a `std::unordered_map` to link `(` to `)`. In systems C++, a `switch` statement completely bypasses hash computation and evaluates in bare-metal $O(1)$ time via a jump table.
+    * **The `reserve()` Micro-Optimization:** Since we are only pushing expected closing brackets, the maximum possible size the stack can reach for a valid string is exactly `s.size() / 2`. By calling `stack.reserve(s.size() / 2)` upfront, you mathematically eliminate all dynamic memory reallocation overhead during the loop.
