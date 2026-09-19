@@ -21,16 +21,20 @@ std::string minWindow(std::string_view s, std::string_view t) {
         // Keep right as anchor
         // Have to shrink left to see how much we can go before losing desired character
         while(totalCharactersRequired == 0){
-            // [left, right] holds a substring of t in s.
-            // Check if [left, right] is less than minimum seen so far
-            size_t currentMinLength = right - left + 1;
-            if(currentMinLength < minLength){
-                minStart = left;
-                minLength = currentMinLength;
-            }
-
             int leftCharIdx = static_cast<unsigned char>(s[left]);
-            if(diffCount[leftCharIdx] == 0) totalCharactersRequired++; // I'm about to move left past a needed character
+            if(diffCount[leftCharIdx] == 0){ // I'm about to move left past a needed character
+                // Minimun check is needed only once before I exit this loop
+
+                // [left, right] holds a substring of t in s.
+                // Check if [left, right] is less than minimum seen so far
+                size_t currentMinLength = right - left + 1;
+                if(currentMinLength < minLength){
+                    minStart = left;
+                    minLength = currentMinLength;
+                }
+                
+                totalCharactersRequired++; 
+            } 
             diffCount[leftCharIdx]++;
             left++;
         }
