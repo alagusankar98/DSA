@@ -120,3 +120,20 @@ while (right < n) {
     * **String Pollution:** Initially struggled with how to define "valid" when the window contains garbage characters. The breakthrough was understanding that tracking `required` completely insulates the logic from pollution.
     * **Pointer Invalidation:** Ran into segfaults and inverted minimum checks early on. Learned to rigorously trace the array boundaries and use sentinel values correctly.
     * **The Micro-Optimization:** Proudly discovered the "Late Eval" optimization independently. Realized that computing sizes while skipping garbage is a waste of ALU cycles, moving the check exactly to the breaking point.
+
+### [6] Sliding Window Maximum
+
+* **The Core Pattern:** Monotonic Deque (Strictly Decreasing). Use a `std::deque` to act as a "waiting room" for potential future maximums. Store *indices*, not values, so you can mathematically prove when an element expires out of the window.
+* **The "Gotcha":**
+    * **The Priority Queue Trap:** A Max Heap (`std::priority_queue`) seems perfect but structurally fails. You cannot remove expired elements from the middle of a heap in $O(1)$. Lazy deletion drops the complexity to $O(N \log K)$, failing the $O(N)$ strict requirement.
+    * **The Linked List Trap:** A `std::list` provides $O(1)$ front/back operations, but dynamically allocates every node on the heap. This destroys L1 cache locality. `std::deque` is the C++ gold standard here because it chunks contiguous memory blocks.
+    * **The 3-Step Lifecycle (Single Loop):** 
+        1. **Crush the Weak (Pop Back):** `while(!dq.empty() && nums[dq.back()] <= nums[i]) dq.pop_back();`. (Use `<=` because older duplicates are equally useless. If a new `5` arrives, the older `5` is obsolete).
+        2. **Enter the Waiting Room:** `dq.push_back(i);`
+        3. **Evict the Expired (Pop Front):** `if(dq.front() == i - k) dq.pop_front();`. (Use `if` instead of `while` because the window only advances by 1 per iteration, so at most 1 element expires).
+    * **Loop Unification:** Don't write a separate setup loop for the first `k` elements. Process everything in one `0` to `n` loop. Only start pushing `nums[dq.front()]` to your result vector when the window is fully formed (`if (i + 1 >= k)`).
+* **Time & Space Complexity:** $O(N)$ Time (every element is pushed and popped at most once, meaning amortized $O(1)$ operations) / $O(K)$ Space (deque max size).
+* **The Struggle & Insights:**
+    * **Tracking Multiple Maxes:** Initially tried to track `firstMax` and `secondMax`, but realized this fails spectacularly on strictly descending arrays.
+    * **Understanding the Deque:** The breakthrough was realizing the deque stores *indices*, solving the expiration problem instantly.
+    * **Unifying the Loops:** Struggled with the off-by-one math when unifying the setup loop and main loop. Found the correct boundaries by mapping out that expiration logic (`front == i - k`) and result-pushing logic (`i + 1 >= k`) organically handle the first `k` elements perfectly.
