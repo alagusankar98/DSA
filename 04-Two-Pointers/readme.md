@@ -9,6 +9,11 @@
 ### Character Evaluation (`<cctype>`)
 * **The `unsigned char` Requirement:** Functions like `std::isalnum`, `std::tolower`, and `std::toupper` technically take an `int` argument. Passing a raw `char` can lead to Undefined Behavior (UB) if the character is negative (like some extended ASCII characters). Always cast: `std::isalnum(static_cast<unsigned char>(c))`.
 
+### Common Pointer Tricks & Paradigms
+* **Floyd's Cycle Detection (Fast & Slow):** Often used in Linked Lists, but heavily applicable to Arrays where values represent next indices (e.g., "Find the Duplicate Number"). The slow pointer moves 1 step, the fast moves 2. If they meet, there is a cycle.
+* **The "Dummy Node" (Linked Lists):** When applying two pointers to modify Linked Lists (like merging, partitioning, or removing the Nth node from the end), always instantiate a dummy node that points to the head. This instantly eliminates all `if (head == nullptr)` and `if (head == target)` edge cases.
+* **The Intersecting Traverse:** When comparing two separate arrays or lists, use two pointers starting at index `0` for both. Advance the pointer that points to the *smaller* value. This is the bedrock of the Merge Sort merge phase and finding intersections.
+
 ---
 
 ## 2. General Summary / Quick Reference

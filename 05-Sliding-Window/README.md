@@ -7,6 +7,17 @@ While standard Two Pointers start at opposite ends and converge, a Sliding Windo
 
 By standardizing on this `right < n` expansion loop, you mathematically guarantee $O(N)$ time complexity because both `left` and `right` only ever move forward. Each element is processed exactly twice at most (once when `right` enters, once when `left` exits).
 
+### The C++ `std::deque` (Double-Ended Queue)
+A core structure for advanced "Monotonic" sliding windows (like finding maximums). 
+* **Hardware Reality:** Unlike a `std::list` (which is a linked list that allocates every node randomly on the heap and destroys L1 cache locality), a `std::deque` allocates fixed-size contiguous chunks of memory. This allows it to grow at both ends while maintaining phenomenal cache locality.
+* **Core API:** `push_back()`, `pop_back()`, `push_front()`, `pop_front()`, `front()`, `back()`, `empty()`. All of these operations are **Amortized $O(1)$**.
+* **Usage:** You almost exclusively store *indices* inside the deque, not actual array values. This lets you mathematically determine if the `front()` element has expired out of your `[left, right]` bounds.
+
+### Systems-Level Tricks
+* **The Bitmask Matcher:** If you need to check if 26 characters exactly match a target frequency, scanning a 26-element array every iteration is $O(26)$. Instead, use a `uint32_t mask`. Flip the bit for a character ON when its frequency perfectly matches, and OFF when it breaks. A perfect window is found branchlessly via `if (mask == 0x03FFFFFF)`.
+* **The Single Delta Array:** If you need to match two sets of frequencies (e.g. `s1` and `s2`), don't use two arrays. Use a single `std::array<int, 128>` ledger. `+` means "I need this", `-` means "I have too much of this", and `0` means "Perfect".
+* **The "Late Eval" Micro-Optimization:** If you are shrinking a window to find a *minimum* length, do not calculate the size and update your minimum on every single `left++` iteration. Because size strictly decreases as `left` advances, the minimum is guaranteed to be the exact state right before the valid condition breaks. Calculate size *once* inside the break condition to save thousands of redundant ALU cycles.
+
 ---
 
 ## 2. General Summary / Quick Reference
