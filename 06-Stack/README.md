@@ -35,6 +35,18 @@ You just got a taste of this with the Monotonic Deque! A Monotonic Stack is simp
 * If you need to find the "Next Greater Element", you maintain a decreasing stack. When a new element arrives that is *larger* than the top of the stack, the top element has found its "Next Greater", so you pop it and resolve it.
 * Just like the deque, you often push the *indices* of the elements onto the stack, not the values themselves, so you can easily calculate distances (like days passed or width of a rectangle).
 
+### Systems-Level String Parsing (`<charconv>`)
+When parsing numbers from strings, avoid `std::stoi` (which throws expensive exceptions and requires null-termination). Systems engineers use `std::from_chars`, but it comes with strict low-level rules:
+* **Raw Pointers Only:** It requires `const char*` bounds. You cannot use iterators like `.begin()`. You must pass the base memory address `str.data()` and the end boundary `str.data() + str.size()`.
+* **The `+` Quirk:** It parses negative numbers (`-2`) perfectly, but natively fails on explicit positives (`+2`). You must manually advance the pointer: 
+  ```cpp
+  const char* first = str.data();
+  const char* last = str.data() + str.size();
+  if (first != last && *first == '+') ++first;
+  ```
+* **The Range Guard:** Why `first != last`? Because in modern C++ range logic (like with `string_view`), an empty string means `first` and `last` are the exact same address. Dereferencing `*first` without checking `first != last` can result in out-of-bounds Undefined Behavior if the payload isn't null-terminated.
+* **Asserting Success:** Always assert the error code to guarantee valid parsing: `assert(res.ec == std::errc());`.
+
 ---
 
 ## 2. General Summary / Quick Reference
@@ -79,3 +91,19 @@ Used for finding the "Next Greater" or "Previous Smaller" element, often for his
 * **The Struggle & Insights:**
     * **Overcomplicating with Deques:** Initially tried to shoehorn yesterday's Monotonic Deque logic into this, forgetting that a strict Stack interface doesn't allow removing expired minimums from the middle or back. Duplicating the minimum alongside the data is the LIFO-compliant way.
     * **C++ Naming Conventions:** A struct definition is a user-defined type, so it should follow PascalCase (`MinData`), not camelCase (`minData`), to distinguish it from variables.
+
+### [3] Evaluate Reverse Polish Notation
+
+* **The Core Pattern:** The Accumulator Stack. The algorithm is incredibly rigid: if it's a number, push it. If it's an operator, pop two numbers, evaluate them, and push the result back.
+* **The "Gotcha":**
+    * **The Order of Operands:** When you hit an operator and pop twice, the *first* number you pop is the **Right** operand, and the *second* number is the **Left** operand. Reversing this will cause subtraction and division to fail completely.
+    * **The Mathematical `reserve()`:** An RPN expression of length $N$ tokens contains exactly $n$ numbers and $n-1$ operators (because every operator consumes 2 numbers and returns 1). Therefore, $N = 2n - 1$, which means $n = (N + 1) / 2$. You can pre-allocate the exact maximum capacity your stack will ever need via `stack.reserve((tokens.size() + 1) / 2)`.
+    * **Switching on Strings:** You cannot pass a `std::string_view` into a `switch` statement. Since all valid operators are single characters, use `if (str.size() == 1 && !std::isdigit(str[0]))` to confirm it's an operator, then run a `switch (str[0])` for blazing fast $O(1)$ evaluation.
+    * **Relentless Assertions:** 
+        * Assert the stack has at least 2 elements before operating (`assert(stack.size() >= 2)`).
+        * Assert `std::from_chars` succeeded (`assert(res.ec == std::errc{})`).
+        * Assert the stack ends with exactly 1 element (`assert(stack.size() == 1)`). 
+* **Time & Space Complexity:** $O(N)$ Time / $O(N)$ Space (technically bounded to $N/2$ elements).
+* **The Struggle & Insights:**
+    * **Why a Stack?** Initially tried to solve this with just two variables, completely failing to realize that RPN expressions can stack an arbitrary number of operands before ever encountering a single operator (e.g., `5 4 3 2 + + +`).
+    * **The `std::from_chars` Nuances:** Struggled with the pointer arguments until realizing `.data()` provides the base memory address. Got blocked by its refusal to parse `+2` natively, which forced me to write the memory-safe pointer advancement check (`first != last && *first == '+'`).

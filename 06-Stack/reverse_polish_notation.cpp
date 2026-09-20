@@ -16,17 +16,17 @@ int evalRPN(const vector<string>& tokens) {
 
             // Check if stack has atleast two elements
             assert((numStack.size() > 1) && "Stack either empty or has only one operand");
-            int second = numStack.back(); numStack.pop_back();
-            int first = numStack.back(); numStack.pop_back();
+            int right = numStack.back(); numStack.pop_back();
+            int left = numStack.back(); numStack.pop_back();
             switch(str[0]){ // Switch works only on char (convertible to int), not on string
             case '+': 
-                numStack.push_back(first + second); break;
+                numStack.push_back(left + right); break;
             case '-':
-                numStack.push_back(first - second); break;
+                numStack.push_back(left - right); break;
             case '*':
-                numStack.push_back(first * second); break;
+                numStack.push_back(left * right); break;
             case '/':
-                numStack.push_back(first / second); break;
+                numStack.push_back(left / right); break;
             default:
                 assert(false && "Invalid operand");
                 break;
