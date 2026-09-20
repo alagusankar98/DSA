@@ -1,28 +1,42 @@
-int16_t parseInteger(std::string_view str){
-    int16_t result = 0;
+int parseInteger(std::string_view str){
+    int result = 0;
 
     auto _ = std::from_chars(str.data(), str.data() + str.size(), result);
 
     return result;
 }
 int evalRPN(const vector<string>& tokens) {
-    std::pair<int, int> data{};
-    
-    // Get data first
-    if(!tokens.empty()) data.first = parseInteger(tokens[0]);
+    std::vector<int> numStack;
 
-    for(size_t i = 1; i < tokens.size(); i++){
+    for(size_t i = 0; i < tokens.size(); i++){
         if(tokens[i] == "+"){
-            data.first += data.second;
+            int second = numStack.back();
+            numStack.pop_back();
+            int first = numStack.back();
+            numStack.pop_back();
+            numStack.push_back(first + second);
         } else if (tokens[i] == "*") {
-            data.first *= data.second;
+            int second = numStack.back();
+            numStack.pop_back();
+            int first = numStack.back();
+            numStack.pop_back();
+            numStack.push_back(first * second);
         } else if (tokens[i] == "/") {
-            data.first /= data.second;
+            int second = numStack.back();
+            numStack.pop_back();
+            int first = numStack.back();
+            numStack.pop_back();
+            numStack.push_back(first / second);
         } else if (tokens[i] == "-") {
-            data.first -= data.second;
+            int second = numStack.back();
+            numStack.pop_back();
+            int first = numStack.back();
+            numStack.pop_back();
+            numStack.push_back(first - second);
         } else {
-            data.second = parseInteger(tokens[i]);
+            
+            numStack.push_back(parseInteger(tokens[i]));
         }
     }
-    return data.first;
+    return numStack.back();
 }
