@@ -1,37 +1,39 @@
+#include <cassert>
+
+struct MinData{
+    int val;
+    int min;
+};
+
 class MinStack {
 private:
-    std::vector<int> valStack_;
-    std::vector<int> minStack_;
+    std::vector<MinData> stackVar;
 public:
     MinStack() {
-        
+        stackVar.reserve(30000);
     }
     
     void push(int val) {
-        valStack_.push_back(val);
         // Check if current val is less than already present min element
-        if(minStack_.empty() || minStack_.back() > val){
-            minStack_.push_back(val);
-        } else {
-            minStack_.push_back(minStack_.back());
-        }
+        int minVal = (stackVar.empty()) ? val : std::min(val, stackVar.back().min);
+        stackVar.emplace_back(val, minVal);
     }
     
     void pop() {
-        if(valStack_.empty()) return;
-        valStack_.pop_back();
-        minStack_.pop_back();
+        assert(!stackVar.empty());
+    
+        stackVar.pop_back();
     }
     
     int top() {
-        if(valStack_.empty()) return -1;
+        assert(!stackVar.empty());
 
-        return valStack_.back();
+        return stackVar.back().val;
     }
     
     int getMin() {
-        if(valStack_.empty()) return -1;
+        assert(!stackVar.empty());
 
-        return minStack_.back();
+        return stackVar.back().min;
     }
 };
