@@ -107,3 +107,15 @@ Used for finding the "Next Greater" or "Previous Smaller" element, often for his
 * **The Struggle & Insights:**
     * **Why a Stack?** Initially tried to solve this with just two variables, completely failing to realize that RPN expressions can stack an arbitrary number of operands before ever encountering a single operator (e.g., `5 4 3 2 + + +`).
     * **The `std::from_chars` Nuances:** Struggled with the pointer arguments until realizing `.data()` provides the base memory address. Got blocked by its refusal to parse `+2` natively, which forced me to write the memory-safe pointer advancement check (`first != last && *first == '+'`).
+
+### [4] Daily Temperatures
+
+* **The Core Pattern:** The Monotonic Stack (Decreasing). The stack acts as a "waiting room" for unresolved indices. As you iterate, the current element acts as a resolver. While the current temperature is hotter than the temperature of the day sitting at the top of the stack, the current day is the answer for that waiting day. Pop the waiting day, calculate the distance (`current_index - popped_index`), and repeat the chain reaction. Finally, push the current day into the waiting room.
+* **The "Gotcha":**
+    * **The Implicit Zero Cleanup:** If you encounter a strictly descending array (e.g., `[50, 40, 30]`), no day will ever find a warmer day. Instead of writing a second loop at the end to pop leftover stack elements and set them to `0`, simply initialize the entire result array with zeros upfront: `std::vector<int> res(n, 0);`. Unresolved days are inherently handled.
+    * **Logic Flattening:** Don't wrap the logic in `if/else` blocks based on whether the stack is empty or the current day is hotter/colder. Every single day *must* enter the waiting room. Just run a `while (!stack.empty() && temp > temps[stack.back()])` loop to resolve old days, and then unconditionally `stack.push_back(i);`.
+    * **The Worst-Case Pre-allocation:** In the worst-case scenario (a descending array), every single element will sit in the stack at once. Therefore, you can safely `stack.reserve(n)` to mathematically guarantee zero reallocations.
+* **Time & Space Complexity:** $O(N)$ Time / $O(N)$ Space.
+* **The Struggle & Insights:**
+    * **Breaking the Sliding Window Habit:** Stared at the problem initially trying to shoehorn a sliding window/deque into it. Realized it fundamentally failed because a window expects fixed boundaries, whereas this problem demands resolving a "Next Greater Element" at an unknown future distance.
+    * **The "Waiting Room" Epiphany:** The visual of the stack as a waiting room clicked perfectly. The values naturally sort themselves in strictly decreasing order because any hot day instantly annihilates all colder days before entering the room itself.
