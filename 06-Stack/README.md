@@ -119,3 +119,15 @@ Used for finding the "Next Greater" or "Previous Smaller" element, often for his
 * **The Struggle & Insights:**
     * **Breaking the Sliding Window Habit:** Stared at the problem initially trying to shoehorn a sliding window/deque into it. Realized it fundamentally failed because a window expects fixed boundaries, whereas this problem demands resolving a "Next Greater Element" at an unknown future distance.
     * **The "Waiting Room" Epiphany:** The visual of the stack as a waiting room clicked perfectly. The values naturally sort themselves in strictly decreasing order because any hot day instantly annihilates all colder days before entering the room itself.
+
+### [5] Car Fleet
+
+* **The Core Pattern:** Sorting + Bottleneck Tracking (Simulated Stack). To know if cars collide, evaluate them from the target backwards. Pair the starting `position` with the `timeToTarget` (`(target - pos) / speed`). Sort the cars by position. A car coming from behind will only form a *new* fleet if its `timeToTarget` is strictly greater than the bottleneck time of the fleet ahead of it.
+* **The "Gotcha":**
+    * **The Integer Division Trap:** `(target - position) / speed` silently truncates decimal times if both variables are integers, ruining the collision mathematics. You must promote the divisor: `static_cast<double>(speed)`.
+    * **The Reverse Iterator Bypass:** Evaluating cars closest to the target first implies a reverse loop (`rbegin()` to `rend()`). Reverse iterators can be cognitively messy. Instead, sort the array *descending* via `std::greater<std::pair<int, double>>()`. The car closest to the target is now at index `0`, allowing a clean, standard forward iteration.
+    * **The Empty Stack Crash:** If using an actual stack (or a vector with `pop_back()`), failing to write `!empty()` in the inner destruction loop instantly crashes the program when duplicates cause the stack to fully drain.
+* **Time & Space Complexity:** $O(N \log N)$ Time (due to sorting) / $O(N)$ Space (for the pairs array).
+* **The Struggle & Insights:**
+    * **Why is this a Stack Problem?** Initially tried to physically `pop()` merged fleets. Then realized a physical stack isn't actually needed. Tracking `double prevBottleNeckTime = std::numeric_limits<double>::min();` completely mimics the `.top()` of a stack without needing memory allocation or pop loops. A variable and a counter achieve the exact same state machine as a full stack.
+    * **Sorting Paired Data:** Learned how to safely tie derivative data (`hoursRemaining`) to its original sorting key (`position`) by packing them into a `std::vector<std::pair<int, double>>`. Since `std::sort` inherently evaluates `.first`, the pairing is perfectly maintained.
