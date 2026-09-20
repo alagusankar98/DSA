@@ -66,3 +66,16 @@ Used for finding the "Next Greater" or "Previous Smaller" element, often for his
 * **The Struggle & Insights:**
     * **Hash Maps vs `switch`:** My first instinct was to use a `std::unordered_map` to link `(` to `)`. In systems C++, a `switch` statement completely bypasses hash computation and evaluates in bare-metal $O(1)$ time via a jump table.
     * **The `reserve()` Micro-Optimization:** Since we are only pushing expected closing brackets, the maximum possible size the stack can reach for a valid string is exactly `s.size() / 2`. By calling `stack.reserve(s.size() / 2)` upfront, you mathematically eliminate all dynamic memory reallocation overhead during the loop.
+
+### [2] Min Stack
+
+* **The Core Pattern:** Dual-State Tracking. To retrieve the minimum element in $O(1)$ time without searching, you must store the historical minimum *alongside* every single value. When you push, you calculate the new minimum. When you pop, both the value and its corresponding minimum are removed, instantly rolling the state back.
+* **The "Gotcha":**
+    * **Cache Locality (Struct vs Parallel Vectors):** Using two separate vectors (`dataStack` and `minStack`) fragments memory. Creating a single `std::vector<MinData>` where `struct MinData { int val; int min; };` guarantees that both the value and the minimum are pulled into the L1 cache simultaneously.
+    * **Ternary Initialization:** Calculating the minimum to push can get messy with `if/else` logic. A clean ternary operator handles it branchlessly: `int currentMin = stack.empty() ? val : std::min(val, stack.back().min);`.
+    * **Defensive Assertions (`<cassert>`):** Even if a problem guarantees valid inputs, never call `.pop_back()` or `.back()` blindly. Use `assert(!stack.empty());` to prove to the interviewer that you understand the Undefined Behavior risks and are actively guarding against them.
+    * **Constructor Pre-allocation:** The constraints explicitly state a maximum of 30,000 operations. Adding a constructor that calls `stack.reserve(30000)` instantly drops all reallocation latency to zero, making every operation strictly $O(1)$.
+* **Time & Space Complexity:** $O(1)$ Time for all operations / $O(N)$ Space.
+* **The Struggle & Insights:**
+    * **Overcomplicating with Deques:** Initially tried to shoehorn yesterday's Monotonic Deque logic into this, forgetting that a strict Stack interface doesn't allow removing expired minimums from the middle or back. Duplicating the minimum alongside the data is the LIFO-compliant way.
+    * **C++ Naming Conventions:** A struct definition is a user-defined type, so it should follow PascalCase (`MinData`), not camelCase (`minData`), to distinguish it from variables.
