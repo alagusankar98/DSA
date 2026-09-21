@@ -50,4 +50,14 @@ The hardest and most common FAANG variation (e.g., Koko Eating Bananas). You are
 
 ## 3. Problem Strategies & Patterns
 
-*(Problems and your insights will be added here as you solve them)*
+### [1] Binary Search
+
+* **The Core Pattern:** The Exact Match Template. Establish `left` and `right` boundaries. Calculate `mid`. If `nums[mid]` is too large, discard the right half. If it's too small, discard the left half.
+* **The "Gotcha":**
+    * **The `<=` Condition:** Using `while (left < right)` is a fatal logic error for finding exact matches. If the target is sitting exactly at the boundary where `left` and `right` converge (or if the array only has 1 element), the loop will break before evaluating it. You *must* use `<=` to evaluate the final remaining index.
+    * **The Integer Overflow Trap:** Using `mid = (left + right) / 2` is mathematically correct but fundamentally broken in systems engineering. If `left` and `right` are both extremely large indices (e.g., both $> 1$ Billion), their sum exceeds the 32-bit signed integer limit (`2.14 Billion`), overflowing into a negative number and instantly segfaulting your array lookup. Always use `left + (right - left) / 2`.
+    * **Directional Awareness:** Do not blindly memorize `right = mid - 1`. That only works for an ascending array. If the array is strictly descending, a number *exceeding* the target means the target is further right, requiring `left = mid + 1`. Always anchor your logic to the sort direction.
+* **Time & Space Complexity:** $O(\log N)$ Time / $O(1)$ Space.
+* **The Struggle & Insights:**
+    * **Visualization:** Taking the time to visualize the search space halving was critical. It makes the bounds logic (`mid - 1` vs `mid + 1`) intuitive rather than just memorized syntax.
+    * **Systems-Level Math:** Learned the integer overflow trick exactly as documented in the core fundamentals. It is one of the most commonly tested "hidden" traps in FAANG interviews.
