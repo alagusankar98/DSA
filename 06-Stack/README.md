@@ -47,6 +47,11 @@ When parsing numbers from strings, avoid `std::stoi` (which throws expensive exc
 * **The Range Guard:** Why `first != last`? Because in modern C++ range logic (like with `string_view`), an empty string means `first` and `last` are the exact same address. Dereferencing `*first` without checking `first != last` can result in out-of-bounds Undefined Behavior if the payload isn't null-terminated.
 * **Asserting Success:** Always assert the error code to guarantee valid parsing: `assert(res.ec == std::errc());`.
 
+### C++ Production Standards (The Office Reality Check)
+In FAANG interviews and strict corporate builds (compiling with `-Wall -Werror`), logic alone isn't enough. You will fail code reviews for these two common violations:
+* **Const Correctness:** If a function takes a vector that it only reads from (like a histogram), passing it as `std::vector<int>& heights` is a massive red flag. You must guarantee to the caller that you won't silently modify their data. Always use `const std::vector<int>& heights`.
+* **Type Safety (`-Wsign-compare`):** Standard library `.size()` returns an unsigned `size_t`. Iterating with a signed integer `for (int i = 0; i < vec.size(); i++)` forces the compiler to compare a signed and unsigned type. This is a classic vulnerability vector. Always cache the size safely: `const int n = static_cast<int>(vec.size());` and use `n` in your loop.
+
 ---
 
 ## 2. General Summary / Quick Reference
@@ -62,6 +67,12 @@ Used for matching parentheses, validating paths, or evaluating postfix notation.
 Used for finding the "Next Greater" or "Previous Smaller" element, often for histograms or temperature span problems.
 * While the stack is not empty and the current element breaks the monotonic rule (e.g. current is `>` than `stack.back()`), you `pop_back()` the old element and process its result using the current index.
 * After crushing the weak elements, `push_back(i)` the current index.
+
+### Variation 3: `std::string` as a Stack
+For string manipulation and de-duplication problems (e.g., removing adjacent duplicate characters like `abbaca` -> `ca`, or building directory paths), a raw `std::string` acts exactly like a stack! You can call `str.push_back()` and `str.pop_back()` directly on the string, completely eliminating the need to use a `std::vector` and then waste $O(N)$ time building a string out of it at the end.
+
+### Variation 4: Multi-Stack State Machines
+Some architectural problems require shifting data back and forth between two stacks to simulate other data structures (like undo/redo logic). A classic FAANG systems question is "Implement Queue using Stacks", where you use an `inStack` purely for data ingestion, and physically pour it into an `outStack` (reversing the order) only when a pop/peek is requested.
 
 ---
 
@@ -131,3 +142,17 @@ Used for finding the "Next Greater" or "Previous Smaller" element, often for his
 * **The Struggle & Insights:**
     * **Why is this a Stack Problem?** Initially tried to physically `pop()` merged fleets. Then realized a physical stack isn't actually needed. Tracking `double prevBottleNeckTime = std::numeric_limits<double>::min();` completely mimics the `.top()` of a stack without needing memory allocation or pop loops. A variable and a counter achieve the exact same state machine as a full stack.
     * **Sorting Paired Data:** Learned how to safely tie derivative data (`hoursRemaining`) to its original sorting key (`position`) by packing them into a `std::vector<std::pair<int, double>>`. Since `std::sort` inherently evaluates `.first`, the pairing is perfectly maintained.
+
+### [6] Largest Rectangle in Histogram
+
+* **The Core Pattern:** Increasing Monotonic Stack. Store indices. The core logic is to ask: "If this bar is the shortest bar in a rectangle, how far left and right can I stretch?"
+    * **Right Boundary:** The right boundary is always the current index `i` (the blocker). The moment you encounter a shorter bar, the taller bars on the stack are permanently blocked from extending further right.
+    * **Left Boundary:** The left boundary is the *new* top of the stack after popping. (Or `-1` if the stack becomes empty).
+    * **Width Math:** `Width = Right - Left - 1`. This equation is pure magic. It completely spans across the physical space of any taller bars you previously popped, bridging the gap perfectly.
+* **The "Gotcha":**
+    * **The "Dummy Zero" Cleanup:** If the array keeps increasing (e.g., `[1, 5, 6]`), bars sit on the stack indefinitely because they never hit a blocker. Instead of writing a massive duplicated `while` loop at the end to clean them up, run your main loop exactly one iteration out of bounds: `for (int i = 0; i <= n; i++)`. When `i == n`, simulate a height of `0`. This invisible zero-height cliff forces the stack to flawlessly flush every remaining survivor using the exact same logic.
+    * **Width Misfires:** Simply subtracting the popped index from the current index (`i - poppedIndex`) is a fatal math error. It completely ignores the space available to the left. You *must* use the new top of the stack.
+* **Time & Space Complexity:** $O(N)$ Time / $O(N)$ Space.
+* **The Struggle & Insights:**
+    * **Understanding Space vs Stack Disappearance:** The hardest conceptual hurdle was realizing that popping a tall bar does not erase its physical x-axis coordinate. When a shorter bar underneath it calculates `Right - Left - 1`, the math effortlessly absorbs the physical space where the tall bar used to stand.
+    * **Systems Engineering Reality Check:** Suffered intense code reviews for failing `const std::vector<int>&` correctness (allowing silent mutation risk) and comparing `int i < vec.size()` (failing `-Wsign-compare` type safety). Learned how to write production-grade code that satisfies strict corporate build flags.
