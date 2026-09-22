@@ -45,3 +45,32 @@ if(matrix.empty() || matrix[0].empty()) return false;
 
     return false;
 }
+
+// Optimal one pass solution, but prefer the two pass solution as it is faster due to absence of multiple integer division
+
+// bool searchMatrix(const std::vector<std::vector<int>>& matrix, int target) {
+//     if(matrix.empty() || matrix[0].empty()) return false;
+//     const int rows = static_cast<int>(matrix.size());
+//     const int cols = static_cast<int>(matrix[0].size());
+
+//     int64_t left = 0;
+//     int64_t right = static_cast<int64_t>(rows * cols) - 1;
+
+//     while(left <= right){
+//         int64_t mid = left + (right - left) / 2;
+
+//         // Convert mid back to rows and columns
+//         int row = static_cast<int>(mid / cols);
+//         int column = static_cast<int>(mid % cols);
+
+//         if(matrix[row][column] == target){
+//             return true;
+//         } else if (matrix[row][column] > target){
+//             right = mid - 1;
+//         } else {
+//             left = mid + 1;
+//         }
+//     }
+
+//     return false;
+// }
