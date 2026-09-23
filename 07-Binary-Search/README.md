@@ -123,3 +123,18 @@ The hardest and most common FAANG variation (e.g., Koko Eating Bananas). You are
 * **Time & Space Complexity:** $O(\log N)$ Time / $O(1)$ Space.
 * **The Struggle & Insights:**
     * **Blind vs Informed Search:** Learned a profound binary search rule: You cannot make any mathematical assumptions about an unsorted array, but you *can* use a sorted half to completely rule out possibilities. Finding the sorted half first is the key that unlocks the problem.
+
+### [6] Time Based Key-Value Store
+
+* **The Core Pattern:** Data Design + Binary Search for "Floor". The data structure is an `unordered_map<string, vector<pair<int, string>>>`. Because the problem guarantees that timestamps are always added in strictly increasing order, every `vector` is naturally sorted just by calling `.emplace_back()`. This allows you to run $O(\log N)$ binary searches on the values.
+* **The Mathematical Partition (`left` vs `right`):** 
+    * When searching for a timestamp that isn't exactly in the array, you want the largest timestamp that is `< target`.
+    * A common instinct is to create a variable like `closestValidIndex` and record `mid` every time you move right (`left = mid + 1`). This is safe, but fundamentally unnecessary.
+    * In a standard `while(left <= right)` loop, `left` constantly hunts for invalid (too large) numbers by moving right, and `right` constantly hunts for valid (too small) numbers by moving left.
+    * The exact moment the loop breaks (`left > right`), the pointers cross paths and perfectly partition the array. `left` will mathematically *always* land on the first element `> target`. `right` will mathematically *always* land on the last element `< target`. Thus, you can just return `array[right].second`. The algorithm's constraints force `right` into the exact position you want.
+* **The "Gotcha":**
+    * **Early Exit Optimizations:** You can completely bypass the $O(\log N)$ binary search with $O(1)$ bounds checks. If `timestamp < array.front().first`, it's before any records existed (`return ""`). If `timestamp >= array.back().first`, it's after the latest record (`return array.back().second`). While `right` would naturally point to `.back()` anyway, the early exit saves ALU cycles.
+    * **Naming Conventions:** Avoid complex names like `personMoodMap_`. In a systems environment, simple and generic names like `data_` or `store_` are preferred for scalable data structures.
+* **Time & Space Complexity:** `set()` is $O(1)$ Time. `get()` is $O(\log N)$ Time. Space is $O(N)$.
+* **The Struggle & Insights:**
+    * **Pointer Confidence:** Initially struggled to figure out how to catch the "closest" value if an exact match wasn't found. Doing the micro-execution trace by hand proved that the `right` pointer flawlessly tracks the floor boundary. Trusting the math of the crossover state is a massive milestone in binary search mastery.
