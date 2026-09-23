@@ -77,3 +77,18 @@ The hardest and most common FAANG variation (e.g., Koko Eating Bananas). You are
 * **The Struggle & Insights:**
     * **Logic Fumbles:** Initially flipped the `>=` and `<=` logic when searching for the row bounding box.
     * **Mathematical Visualizations:** Spent time mapping out `mid / cols` by hand to finally trust the math. Realizing that the number of rows only dictates the *maximum* possible `mid`, but has zero impact on extracting coordinates from a given `mid`, was a massive lightbulb moment.
+
+### [3] Koko Eating Bananas
+
+* **The Core Pattern:** Binary Search on Answers (Boundary Finding). Instead of searching a physical array, your search space is a range of *potential answers*: from `1` (minimum possible speed) to `max(piles)` (maximum useful speed). The validation function checks if a speed allows finishing within `h` hours. Because speed linearly correlates with time, the validation array maps out monotonically: `[False, False, True, True, True]`. You want the *first* `True`.
+* **The "Gotcha":**
+    * **Integer Ceiling Math:** Using `(pile / mid) + ((pile % mid == 0) ? 0 : 1)` relies on modulo and branching. Using `std::ceil((double)pile / mid)` requires expensive floating-point conversions. The FAANG systems standard for integer ceiling is **`(pile + mid - 1) / mid`**. This achieves a perfect ceiling using pure, branchless integer math.
+    * **The `std::max_element` Trap:** `std::max()` only compares two values. For a vector, you must use `std::max_element(piles.begin(), piles.end())`. But crucially, this returns an *iterator*. You must dereference it `*std::max_element(...)` to get the value, which means you **must** ensure `!piles.empty()` first, otherwise you dereference `.end()` and trigger a Segfault (Undefined Behavior).
+    * **Summation Overflow:** Target `h` is an `int`, but the *sum* of the hours taken at speed `1` on a massive array of piles will easily exceed 2.14 Billion. You must use `int64_t` or `uint64_t` for your running total of hours inside the validation function.
+* **Time & Space Complexity:** $O(N \log M)$ Time (where $N$ is piles size, $M$ is max pile size) / $O(1)$ Space.
+* **The Struggle & Insights:**
+    * **Why `return left;` works:** It feels much safer to track `minH = min(minH, mid)` inside the `hours <= h` block. But let's prove why `return left;` is perfectly safe:
+        1. We only move `left = mid + 1` when the speed is **invalid** (`False`). Therefore, `left` can never settle on an invalid answer.
+        2. We only move `right = mid - 1` when the speed is **valid** (`True`). We are aggressively squeezing the right boundary down to find a smaller valid answer.
+        3. When the loop finally breaks (`left > right`), `right` has squeezed past the valid boundary and is resting on the last `False`. `left` has just pushed past the invalid boundary and is resting exactly on the very first `True`. 
+        4. Thus, when the loop ends, `left` is mathematically guaranteed to be pointing at the minimum valid speed. Trusting `left` here is the ultimate mark of binary search mastery.
