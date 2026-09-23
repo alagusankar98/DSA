@@ -109,3 +109,17 @@ The hardest and most common FAANG variation (e.g., Koko Eating Bananas). You are
 * **Time & Space Complexity:** $O(\log N)$ Time / $O(1)$ Space.
 * **The Struggle & Insights:**
     * **The Convergence Rule:** Setting the loop to `while (left < right)` instead of `<=` is required here. Because we assign `right = mid`, using `<=` would cause an infinite loop when `left == right`. The search logically stops when the two pointers collapse onto the single minimum element.
+
+### [5] Search in Rotated Sorted Array
+
+* **The Core Pattern:** Segment Identification. You cannot run standard binary search directly on a rotated array. However, every time you calculate `mid`, **at least one half of the array is guaranteed to be perfectly sorted**.
+    1. Identify the sorted half (e.g., if `nums[left] <= nums[mid]`, the left half is sorted).
+    2. Ask: "Is the target mathematically inside this sorted boundary?" (e.g., `target >= nums[left] && target < nums[mid]`).
+    3. If yes, it is guaranteed to be in that half. Discard the unsorted half.
+    4. If no, it *must* be in the unsorted half. Discard the sorted half.
+* **The "Gotcha":**
+    * **The Nested Binary Search Trap:** A common beginner instinct is to identify the sorted half and immediately launch a *new, separate* standard binary search function on it. This causes messy code duplication. Simply adjusting your `left` and `right` pointers lets the main loop naturally converge without any helper functions.
+    * **The 2-Element Infinite Loop:** If your first check is `if (nums[mid] == target) return mid;` and it fails, you **must** strictly exclude `mid` from your next boundaries (`left = mid + 1` or `right = mid - 1`). If you mistakenly do `right = mid`, the moment your search space drops to 2 elements (`left - right == 1`), `mid` will repeatedly equal `left`, it won't equal the target, `right` will become `mid`, and the pointers will never change. Infinite loop.
+* **Time & Space Complexity:** $O(\log N)$ Time / $O(1)$ Space.
+* **The Struggle & Insights:**
+    * **Blind vs Informed Search:** Learned a profound binary search rule: You cannot make any mathematical assumptions about an unsorted array, but you *can* use a sorted half to completely rule out possibilities. Finding the sorted half first is the key that unlocks the problem.

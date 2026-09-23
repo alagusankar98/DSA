@@ -1,6 +1,6 @@
 int search(const std::vector<int>& nums, int target) {
     if(nums.empty()) return -1;
-    const int n = nums.size();
+    const int n = static_cast<int>(nums.size());
     int left = 0;
     int right = n -1;
 
@@ -9,9 +9,12 @@ int search(const std::vector<int>& nums, int target) {
 
         if (nums[mid] == target){
             return mid;
-        } else if((nums[mid] < nums[right])){
-            // Right half is sorted. mid COULD NOT be pivot since we are in else if proving (nums[mid] != target)
-            if((target > nums[mid] && (target <= nums[right]))){
+        }
+        
+        if((nums[mid] < nums[right])){
+            // Right half is sorted. mid COULD NOT be in further search space
+            // since we are in else if proving (nums[mid] != target)
+            if(target > nums[mid] && target <= nums[right]){
                 // Target found in right half, discard left half
                 left = mid + 1;
             } else {
@@ -20,7 +23,7 @@ int search(const std::vector<int>& nums, int target) {
             }
         } else {
             // Left half is sorted.
-            if((target >= nums[left] && (target < nums[mid]))){
+            if(target >= nums[left] && target < nums[mid]){
                 // Target found in left half, discard right half
                 right = mid - 1;
             } else {
