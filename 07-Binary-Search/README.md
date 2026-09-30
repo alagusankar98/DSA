@@ -138,3 +138,74 @@ The hardest and most common FAANG variation (e.g., Koko Eating Bananas). You are
 * **Time & Space Complexity:** `set()` is $O(1)$ Time. `get()` is $O(\log N)$ Time. Space is $O(N)$.
 * **The Struggle & Insights:**
     * **Pointer Confidence:** Initially struggled to figure out how to catch the "closest" value if an exact match wasn't found. Doing the micro-execution trace by hand proved that the `right` pointer flawlessly tracks the floor boundary. Trusting the math of the crossover state is a massive milestone in binary search mastery.
+
+### [7] Median of Two Sorted Arrays
+
+> **Read this first (the one-paragraph summary):** You are *not* binary searching for a number. You are binary searching for a **cut**. Draw a vertical line through *both* arrays so that everything to the left of both lines forms the exact *first half* of the merged array. Because both arrays are already sorted, you never build the merged array — you just hunt for the correct cut position, and the median falls out of the **four elements physically touching the two cut lines**. This is the hardest problem in the Neetcode 150; it breaks almost everyone on the first pass. If it feels murky, that is normal.
+
+* **The Core Pattern:** Binary Search on the **Partition** (not on a value). Run the search on the *smaller* array only, and let the larger array's cut be mathematically forced by it.
+
+#### The Mental Model (build this before touching code)
+Imagine both arrays merged and sorted into one line, then a wall dropped down the exact middle:
+* **The Left Bag** = everything left of the wall. **The Right Bag** = everything right of it.
+* The median lives *at the wall*. For it to be the true median, two things must hold:
+    1. **Size:** the Left Bag holds exactly half the elements (or one extra when the total is odd).
+    2. **Order:** *everything* in the Left Bag ≤ *everything* in the Right Bag.
+* **The Left Bag is built from `Left A` + `Left B`.** That is the only combination that matters. If the total is odd, the single biggest number in that bag *is* the median — you never look at the Right side at all.
+* **The Right side is only a tripwire.** Sorting already guarantees `Left A ≤ Right A` and `Left B ≤ Right B` inside each array. The one thing we *don't* get for free is how `Left A` compares to `Right B` (and vice-versa). So the Right side exists purely as an alarm system to prove the Left Bag is valid.
+
+#### The Cut is a Wall, Not an Element (the #1 source of bugs)
+`sectionA` is **the count of elements Array A contributes to the Left Bag**, not an index into A.
+* If `sectionA == 2`, then A donates `nums1[0]` and `nums1[1]` to the Left Bag.
+* Therefore the boundary elements are:
+    * **Left max of A** = `nums1[sectionA - 1]` (the last element *before* the wall)
+    * **Right min of A** = `nums1[sectionA]` (the first element *after* the wall)
+* The two arrays are a **seesaw**: the Left Bag's total size is fixed, so once A's contribution is chosen, B's is forced: `sectionB = totalHalf - sectionA`.
+
+#### The `+1` in `totalHalf = (n1 + n2 + 1) / 2`
+This single offset lets one formula handle both parities via C++ truncating division:
+* **Even total** (e.g. 8): `(8 + 1) / 2 = 4`. The `+1` is eaten by truncation → both sides get exactly half.
+* **Odd total** (e.g. 9): `(9 + 1) / 2 = 5`. The Left Bag is forced to take the **extra** element.
+* **The payoff:** when odd, the median is simply `max(leftMax)` — no branching on which side the middle landed. Without the `+1`, the extra element lands on the Right side and you'd need separate pointer math for odd vs even.
+
+#### The Four Boundaries + Virtual Infinity
+The wall can legally fall *outside* an array (A contributes nothing, or everything). Reading `nums1[sectionA - 1]` when `sectionA == 0` is `nums1[-1]` → segfault; reading `nums1[sectionA]` when `sectionA == n1` reads past the end → segfault. The fix is to treat a missing left side as `-∞` and a missing right side as `+∞`, which *always* pass the ≤ comparisons harmlessly:
+```cpp
+int maxLeftA  = (sectionA > 0)  ? nums1[sectionA - 1] : std::numeric_limits<int>::min();
+int maxLeftB  = (sectionB > 0)  ? nums2[sectionB - 1] : std::numeric_limits<int>::min();
+int minRightA = (sectionA < n1) ? nums1[sectionA]     : std::numeric_limits<int>::max();
+int minRightB = (sectionB < n2) ? nums2[sectionB]     : std::numeric_limits<int>::max();
+```
+
+#### The Tripwire + Pointer Updates
+Only **one** cross-boundary rule needs checking (the in-array order is free from sorting):
+```cpp
+if (maxLeftA <= minRightB && maxLeftB <= minRightA) {
+    // PERFECT CUT. Left Bag is valid → compute median and return.
+    if ((n1 + n2) % 2 != 0)
+        return std::max(maxLeftA, maxLeftB);                                    // odd: biggest in Left Bag
+    return (std::max(maxLeftA, maxLeftB) + std::min(minRightA, minRightB)) / 2.0; // even: average across the wall
+} else if (maxLeftA > minRightB) {
+    // A donated a number too big for the Left Bag → shrink A's contribution.
+    rightA = sectionA - 1;
+} else {
+    // B spilled a big number into the Left Bag → A must contribute more.
+    leftA = sectionA + 1;
+}
+```
+Why the median needs *only* these four values: every other element in the Left Bag sits *behind* its champion (`maxLeftA` or `maxLeftB`) and every element in the Right Bag sits *ahead* of its champion. The number at the dead center of the universe can only be one of the four elements kissing the wall.
+
+* **The "Gotcha":**
+    * **Search bounds are `[0, n1]`, NOT `[0, n1 - 1]`.** The cut is a *count*, and A can legally contribute **all** `n1` of its elements to the Left Bag. Initialize `int rightA = n1;` (not `n1 - 1`). Capping at `n1 - 1` blocks the "A gives everything" scenario, which forces `sectionB` to demand more elements than B physically has, and the math collapses. *(This was the final one-line bug — everything else was correct.)*
+    * **The Cut ≠ Element index.** Left boundary is `section - 1`, right boundary is `section`. Assuming the left half "includes `sectionA` itself" (using `nums[sectionA]` for the left max and `nums[sectionA + 1]` for the right min) misaligns the entire partition and leaves a gap.
+    * **The Copy-Paste Index Bug:** When writing the four boundaries, it is fatally easy to write `minRightSectionB = nums1[...]` instead of `nums2[...]`. If B is the larger array, that reads out of bounds instantly. Every A-boundary indexes `nums1`; every B-boundary indexes `nums2`.
+    * **Always search the smaller array:** Start with `if (nums1.size() > nums2.size()) return findMedianSortedArrays(nums2, nums1);`. This guarantees `sectionB = totalHalf - sectionA` never goes negative and pins the complexity to `O(log(min(m, n)))`.
+    * **The `2.0` (not `2`) Trap:** In the even case, divide by `2.0` (and `static_cast<double>` the sum first) or integer division silently truncates your median.
+    * **Defensive `> 0` / `< n` over `== 0` / `== size`:** Using range guards instead of strict equality means that even if a pointer ever drifted out of range from an upstream bug, the ternary gracefully falls back to the infinity sentinel instead of slipping past an `==` check into invalid memory.
+* **Time & Space Complexity:** $O(\log(\min(m, n)))$ Time / $O(1)$ Space. (The recursion swap is a single tail call, not real recursion depth.)
+* **The Brute-Force Detour (and why it's a failure here):** The instinct is to half-merge: walk both arrays up to `(m + n) / 2`, always advancing the pointer at the smaller value. The trap is trying to *reverse-engineer* the median from the pointer positions after the loop — the pointers point at the *future* candidates, not the values you just consumed, so `idx - 1` needs a messy web of "which array supplied the last element" checks (worse when one array is exhausted). **The fix is to decouple data from pointers:** carry two explicit value variables, `prevVal` and `currVal`, shifting `currVal → prevVal` and reassigning `currVal` each step. Then odd → `currVal`, even → `(prevVal + currVal) / 2.0`, and you never look at the pointers. But this is $O(m + n)$ — the problem *mandates* $O(\log(m + n))$, so brute force is an automatic interview failure. Worth coding once to feel the pointer-vs-value distinction, then discard.
+* **The Struggle & Insights:**
+    * **Three days on the wall.** Dragged this one across three sessions. The murk was never the code — it was refusing to accept that the four boundary elements are *sufficient*. The unlock: internalizing that a sorted array means the interior of each bag is provably irrelevant; only the elements touching the wall can ever be the center.
+    * **"Why bother with the Right side?"** The reframe that finally landed: the Right side is not part of the answer, it is a *measuring stick*. Bad cut example — `A: [1, 100 | 105, 106]`, `B: [2, 3 | 4, 5]` → Left Bag `[1, 100, 2, 3]`. The `100` (champion of Left A) dwarfs the `4` (min of Right B), so the alarm fires: `100` must be thrown right, `4` pulled left. That single comparison is the entire correction signal.
+    * **The seesaw clicked the pointer logic:** because `sectionB` is forced by `sectionA`, moving *only* A's cut left or right automatically rebalances B in the opposite direction. `maxLeftA > minRightB` means "A is too heavy" → `rightA = sectionA - 1` → next iteration picks a smaller `sectionA`, which pulls more from B to compensate.
+    * **Systems takeaway:** the `+1` offset and the `±∞` sentinels are both branch-elimination tricks — they collapse "odd vs even" and "in-bounds vs cliff" into unified arithmetic instead of nested `if/else`, exactly the kind of ALU-level tidiness this whole track keeps drilling.
