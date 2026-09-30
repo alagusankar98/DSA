@@ -1,12 +1,10 @@
 TreeNode* invertTree(TreeNode* root) {
     if(!root) return nullptr; // Empty tree
 
-    TreeNode* leftNode = root->left;
-    root->left = root->right;
-    root->right = leftNode;
+    std::swap(root->left, root->right);
 
-    TreeNode* _ = invertTree(root->left);
-    _ = invertTree(root->right);
+    invertTree(root->left);
+    invertTree(root->right);
 
     return root;
 }
