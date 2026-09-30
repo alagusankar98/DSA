@@ -125,3 +125,34 @@ Recurse; a node is the LCA if the two targets are found in *different* subtrees 
 ## 3. Problem Strategies & Patterns
 
 *(Entries added one problem at a time as they're solved — same format as the other topic guides: **The Core Pattern**, **The "Gotcha"**, **Time & Space Complexity**, **The Struggle & Insights**.)*
+
+### [1] Invert Binary Tree
+
+* **The Core Pattern:** Recursive DFS (**Pre-order**). At every node, do one local action — swap its two children — then recurse into both subtrees. Because the action at each node is independent of every other node, "invert the whole tree" collapses to "swap children, everywhere."
+    ```cpp
+    TreeNode* invertTree(TreeNode* root) {
+        if (!root) return nullptr;      // base case: empty child
+        std::swap(root->left, root->right);
+        invertTree(root->left);         // return values intentionally discarded
+        invertTree(root->right);
+        return root;                    // hand the (now-inverted) root back to the caller
+    }
+    ```
+* **The "Gotcha":**
+    * **The Base Case is the `nullptr` node — NOT the leaf.** The instinct was to return `nullptr` for *both* a null pointer and a leaf node. That's a subtle bug: returning `nullptr` for a leaf **deletes the leaf**. On a single-node tree (root *is* a leaf), it wiped the entire tree and returned nothing. The fix is that you never need a special leaf case at all: a leaf's two children are already `nullptr`, so the recursive calls on them hit the null base case and unwind harmlessly. *(The alternate instinct — "return the node itself for a leaf" — would also work, but it's redundant. One base case, the null check, covers everything.)*
+    * **Don't `return` the recursive calls.** The temptation is `return invertTree(root->left);`. That's wrong on two counts: it would exit the function after touching only the left subtree (the right never gets processed), and it returns the wrong node. Here the recursion works by **mutating nodes in place** via `std::swap`, so the inner calls' return values carry no information you need — the tree is already being rewired through the pointers. You call them purely for their side effect.
+    * **Discarding a return value needs no `_` temporary.** Assigning the result to a throwaway variable just to "consume" it is unnecessary — in C++, calling a function and ignoring its return value makes the compiler discard it automatically. `invertTree(root->left);` on its own line is complete and correct.
+    * **`std::swap` over a manual temp.** `std::swap(root->left, root->right)` is clearer and less error-prone than the three-line `TreeNode* tmp = ...` dance.
+* **Time & Space Complexity:** $O(N)$ Time (every node visited once) / $O(H)$ Space for the recursion stack, where `H` is tree height — $O(\log N)$ balanced, $O(N)$ worst-case skewed.
+* **The Struggle & Insights:**
+    * **First real recursion design.** The mechanical parts (base case, swap, repeat) came quickly; the wall was trusting *how* the recursion composes — specifically whether the return value was load-bearing. The unlock: the return value only matters at the **very top**, to hand the caller back the root. Every internal call is fire-and-forget; the actual work happens as a side effect on the pointers.
+    * **What the LLM meant by "pre-order":** the approach traverses in **Pre-order** — you process the current node (the swap) *first*, then recurse Left, then Right (`Node → Left → Right`). The name just describes *when the node's own work happens relative to its children*: here, before descending.
+    * **The Post-order alternative (and why both work):** instead of swapping on the way *down*, you can recurse first and swap on the way *back up*:
+        ```cpp
+        if (!root) return nullptr;
+        invertTree(root->left);
+        invertTree(root->right);
+        std::swap(root->left, root->right);   // swap AFTER children are done
+        return root;
+        ```
+        For inversion, pre-order and post-order produce the identical result, because each node's swap is **independent** of what its subtrees look like — the order you visit nodes doesn't change the outcome. (This is *not* true for problems where a node's answer depends on its children's computed results, like height or diameter — those *require* post-order. Invert is just forgiving because the operation is local and order-agnostic.) For the same reason, the left-vs-right recursion order is interchangeable, and even an iterative BFS (swap each node's children as you pop it off a queue) works.
