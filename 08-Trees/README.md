@@ -46,7 +46,13 @@ void inorder(TreeNode* node) {
 }
 ```
 * **The base case is always the null child.** Recursing into `nullptr` and immediately returning is cleaner than checking `if (node->left)` before every call — let the child handle its own emptiness.
-* **The Stack-Overflow Reality:** recursion depth equals tree *height*. On a balanced tree that's `O(log N)` — trivial. On a **skewed** tree it's `O(N)`; with ~10⁵ nodes you can blow the real call stack and segfault. The iterative form (an explicit `std::stack<TreeNode*>`) trades recursion for heap-backed stack space and sidesteps the limit. Know both; reach for iterative when depth could be pathological.
+* **Recursion is NOT "free" space — it uses the thread's call stack in RAM.** It only *looks* like you allocated nothing. Every recursive call executes a hardware `call` that pushes a **stack frame** onto your thread's execution stack: the **return address** (where to resume), the **parameters** (the node pointer), and the **saved caller registers / local variables**. A straight-line tree of 10,000 nodes means 10,000 frames physically stacked in memory. So the space cost is genuinely `O(H)` — you're just not the one typing the pushes.
+* **Recursion (call stack) vs explicit `std::stack` (heap) — the real tradeoff:**
+    * **Per-node overhead:** recursion is forced to store the return address *and* saved register state at every level. An explicit `std::stack<TreeNode*>` stores **only the pointer** — much leaner per node.
+    * **The hard limit:** the OS call stack is small and fixed — typically **~8 MB** on a Linux desktop thread. Blow past it on a deep skewed tree and you get a **Stack Overflow → segfault**, with no graceful exception. An explicit stack lives on the **heap**, bounded only by physical RAM (gigabytes) — realistically un-overflowable.
+    * **The embedded reality:** on bare-metal (e.g. an STM32 / ARM Cortex-M), the linker script may cap the *entire* call stack at 2–4 KB. There, deep recursion is a guaranteed fatal crash, and iterative loops with an explicit (often pre-sized fixed-array) stack are mandatory.
+    * **Which to prefer:** **Interviews / bounded depth → recursion** (4 lines, proves you understand the traversal). **Production over untrusted or deeply-nested data (user graphs, nested JSON), or memory-constrained embedded → iterative** to eliminate the overflow risk. Balanced trees with mathematically bounded depth (e.g. the Red-Black trees behind `std::map`) are safe to recurse.
+* **Backing container for an explicit DFS stack:** use the default **`std::stack<TreeNode*>`** (deque-backed) when depth is unknown. Same reasoning as the Stack topic guide: a `std::vector` reallocates and copies the whole buffer on growth (latency spikes), while a `std::deque` just links a new fixed-size chunk and never moves existing elements. On embedded you'd instead pre-allocate a fixed-size array sized to the hardware's safe bound.
 
 ### BFS: The Queue + Level-Snapshot Trick
 Level-order uses a **`std::queue<TreeNode*>`** (FIFO — first node in is first processed, which is what keeps you moving across a level before descending):
@@ -156,3 +162,23 @@ Recurse; a node is the LCA if the two targets are found in *different* subtrees 
         return root;
         ```
         For inversion, pre-order and post-order produce the identical result, because each node's swap is **independent** of what its subtrees look like — the order you visit nodes doesn't change the outcome. (This is *not* true for problems where a node's answer depends on its children's computed results, like height or diameter — those *require* post-order. Invert is just forgiving because the operation is local and order-agnostic.) For the same reason, the left-vs-right recursion order is interchangeable, and even an iterative BFS (swap each node's children as you pop it off a queue) works.
+
+#### Iterative Variant (Explicit Stack — the overflow-proof form)
+Same algorithm, but the traversal stack is made explicit on the heap instead of riding the call stack (see §1 for *why* — deep skewed trees and embedded targets need this):
+```cpp
+TreeNode* invertTree(TreeNode* root) {
+    if (!root) return nullptr;                 // early return on empty tree
+    std::stack<TreeNode*> st;                  // deque-backed default; depth unknown so no reserve
+    st.push(root);
+    while (!st.empty()) {
+        TreeNode* node = st.top(); st.pop();
+        std::swap(node->left, node->right);    // UNCONDITIONAL swap
+        if (node->left)  st.push(node->left);  // push only real children
+        if (node->right) st.push(node->right);
+    }
+    return root;
+}
+```
+* **The critical bug — swap UNCONDITIONALLY.** The tempting condition "swap only if *both* children are non-null" is wrong: a node with a left child but a null right child would be skipped, leaving the left child stranded on the left. Inversion requires a left child to *become* the right child **even when it's trading places with `nullptr`**. The children are just memory addresses — swapping a valid address with `0x0` is legal and exactly what's needed. Separate the two concerns: **swap always**, then **push only the non-null children** (pushing `nullptr` would crash on the next `->left` dereference).
+* **Container choice:** default `std::stack<TreeNode*>` (deque-backed). You can't `.reserve()` a meaningful size because max depth is unknown up front, so the deque's chunked growth is the right default — no `O(N)` reallocation spikes.
+* **Traversal order note:** this explicit-stack version is still a DFS pre-order in spirit (process/swap on pop, then push children). Swapping to a `std::queue` turns it into an iterative BFS — and for invert, both produce the identical tree, per the order-independence above.
