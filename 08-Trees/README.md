@@ -182,3 +182,17 @@ TreeNode* invertTree(TreeNode* root) {
 * **The critical bug — swap UNCONDITIONALLY.** The tempting condition "swap only if *both* children are non-null" is wrong: a node with a left child but a null right child would be skipped, leaving the left child stranded on the left. Inversion requires a left child to *become* the right child **even when it's trading places with `nullptr`**. The children are just memory addresses — swapping a valid address with `0x0` is legal and exactly what's needed. Separate the two concerns: **swap always**, then **push only the non-null children** (pushing `nullptr` would crash on the next `->left` dereference).
 * **Container choice:** default `std::stack<TreeNode*>` (deque-backed). You can't `.reserve()` a meaningful size because max depth is unknown up front, so the deque's chunked growth is the right default — no `O(N)` reallocation spikes.
 * **Traversal order note:** this explicit-stack version is still a DFS pre-order in spirit (process/swap on pop, then push children). Swapping to a `std::queue` turns it into an iterative BFS — and for invert, both produce the identical tree, per the order-independence above.
+
+### [2] Maximum Depth of Binary Tree
+
+* **The Core Pattern:** Bottom-Up DFS (**Post-order**). A node's depth is `1 + the deeper of its two subtrees`. Each recursive call returns its subtree's depth *up* to the parent, which combines them — the archetype of "a node's answer is built from its children's answers" (the pattern foreshadowed in `[1]`).
+* **My Initial Approach:** Got the shape right on the first try — null → return 0, recurse both sides, return the max. My own mental trace was accurate: left branch descends to a leaf, hits the null wall, unwinds computing, then the right side does the same, and *"as I come back up, I carry forward only the max of the two sides."* That sentence **is** the definition of bottom-up post-order — good instinct to trust.
+* **Where I Stumbled / What I Lacked:**
+    * Wrote `1 + maxDepth(left)` and `1 + maxDepth(right)` as two separate statements → **two additions per node**. Factor the `+1` out: `1 + max(left, right)` adds the current level exactly once. One add, not two.
+    * Parked the results in temp locals; unnecessary — inline both calls straight into `max`.
+    * (Didn't hit these, but lock them in for next time): base case must return **0**, not 1 — a null subtree has zero depth, and a leaf then correctly resolves to `1 + max(0,0) = 1`. And this traversal is **mandatorily post-order** — unlike Invert, the parent literally can't compute until both children return, so you can't reorder the work.
+* **Insights Gained:**
+    * **The recursion shift that matters:** Invert used the return value only at the very top (inner calls were fire-and-forget side effects). Here **every** return value is load-bearing — each call hands its depth to its parent. This is the jump from "recursion for side effects" to "recursion that computes a value up the tree," and it's the template for Balanced Tree, Diameter, and subtree-sum problems next.
+    * **The decision rule for traversal order:** ask "does this node depend on its *descendants'* computed results?" Yes → post-order. That single question picks the traversal every time.
+    * BFS (level-order + level-snapshot from §1) also solves it by counting levels, but DFS is tighter here (`O(H)` vs `O(W)` space).
+* **Time & Space Complexity:** $O(N)$ Time / $O(H)$ Space (recursion stack) — $O(\log N)$ balanced, $O(N)$ skewed.
