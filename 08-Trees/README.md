@@ -4,6 +4,19 @@
 
 A tree is a hierarchical, acyclic structure of nodes. Each node holds a value and pointers to its children. The whole topic is really just **recursion + traversal** — master those two and the rest is variations. Everything you learn here directly unlocks Tries, Heaps, Backtracking, and Graphs.
 
+### What Is a Tree? (The Recursive Definition)
+A tree is defined **in terms of itself**: a tree is a single **root** node plus zero or more disjoint **subtrees**, where *each subtree is itself a tree* with its own root — and this nesting continues until you reach **leaves**, nodes whose subtrees are all empty.
+```text
+            (root)
+           /      \
+     (subtree)   (subtree)   ← each is a full tree in its own right
+       /   \         \
+    (...) (...)      (...)    ← ...recursing down until no subtrees remain
+```
+* **This is the single most important idea in the topic.** It's *why* tree code is recursive: "do X to the tree" almost always decomposes into "do X to the root, then do X to its left subtree and its right subtree." Each recursive call is handed a smaller tree (a subtree) that looks exactly like the original problem.
+* **A binary tree** specializes this: every node has at most two subtrees — a **left** and a **right** — either of which may be empty.
+* **The empty tree (`nullptr`) is the base case.** It's the "no further subtrees" terminator that stops the descent. This is precisely why nearly every tree function opens with `if (!node) return ...;` — you're handling the empty subtree at the bottom of the recursion.
+
 ### Standard Node Structure (C++)
 Mirrors the `ListNode` from Linked List, but with two forward pointers instead of one:
 ```cpp
@@ -25,6 +38,30 @@ struct TreeNode {
 * **Binary Search Tree (BST):** an *ordered* binary tree where for **every** node, all values in the left subtree are `<` the node and all values in the right subtree are `>` the node. The single most important consequence: **an in-order traversal of a BST yields a fully sorted sequence.**
 * **Balanced Tree:** height stays `O(log N)` (left/right subtree heights differ by at most a constant at every node). A **skewed** tree degenerates into a linked list with height `O(N)` — this is the worst case that blows up both time *and* recursion depth.
 * **Complete / Full / Perfect:** shape guarantees you'll care about later for Heaps. *Complete* = every level full except possibly the last, filled left-to-right. *Full* = every node has 0 or 2 children. *Perfect* = full **and** all leaves on the same level.
+
+### Height vs Depth (and the edge-vs-node trap)
+A single node `x` has **both** a depth and a height, and in general they are *different numbers* — this is the part that trips people up.
+
+* **Depth(x)** — measured **top-down**: edges on the path from the **root** down to `x`. Because a tree has no cycles, the root→`x` path is **unique**, so depth is never ambiguous. The root itself has depth `0`.
+* **Height(x)** — measured **bottom-up**: edges on the **longest** path from `x` down to its *deepest* leaf. Since `x` can reach many leaves, you take the deepest one. A leaf has height `0`.
+
+```text
+            A        depth 0,  height 2      ← root: deepest leaf is 2 edges away
+           / \
+          B   C      depth 1,  height 1
+         /
+        D            depth 2,  height 0      ← leaf: depth and height differ here
+```
+
+**The tree-level identity.** When people say *"the height of the tree"* and *"the depth of the tree,"* they mean the **same number**:
+> height of tree = height of root = (max depth over all nodes) = depth of the deepest node = depth of tree
+
+So the common slip — "the depth of the tree is `0` because the root's depth is `0`" — is **wrong**. The *root's* depth is 0, but the *tree's* depth is the depth of its **deepest** node (the max), which equals the root's height. Height and depth only coincide at the whole-tree level; at an individual node they usually don't.
+
+**The edge-vs-node counting trap.** The definitions above count **edges** (single node → height `0`, empty tree → `-1`). But many problems — including LeetCode's **Maximum Depth** (`[2]` below) — count **nodes/levels** instead: `null → 0`, a leaf `→ 1`. The two conventions are off by one:
+> node-count = edge-count + 1
+
+That's exactly why `maxDepth` returns `1` for a single node even though its *edge-height* is `0`. Neither is "more correct" — just **pin down which one the interviewer wants** before you write the base case, because it decides whether `null` returns `0` or `-1` and whether a leaf returns `0` or `1`.
 
 ### The Two Traversal Families
 

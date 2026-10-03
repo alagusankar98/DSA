@@ -1,1 +1,2 @@
 track_progress.md filter=git-crypt diff=git-crypt
+.agents/** filter=git-crypt diff=git-crypt
