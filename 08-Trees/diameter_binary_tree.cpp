@@ -8,7 +8,7 @@ int calculateDiameter(TreeNode* root, int& maxDiameter){
     return 1 + std::max(leftLength, rightLength);
 }
 int diameterOfBinaryTree(TreeNode* root) {
-    int maxDiameter = std::numeric_limits<int>::min();
+    int maxDiameter = 0; // Initializing to min() would fail in case of empty root (nullptr) that fails to check std::max() due to early return
     calculateDiameter(root, maxDiameter);
     return maxDiameter;
 }
