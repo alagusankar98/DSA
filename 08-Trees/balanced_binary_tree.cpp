@@ -1,13 +1,16 @@
-int calculateDepth(TreeNode* root, bool& resultFlag){
+int calculateDepth(TreeNode* root){
     if(!root) return 0;
     
-    int leftLength = calculateDepth(root->left, resultFlag);
-    int rightLength = calculateDepth(root->right, resultFlag);
-    resultFlag = resultFlag && (std::abs(leftLength - rightLength) <= 1);
-    return 1 + std::max(rightLength, leftLength);
+    if(int leftLength = calculateDepth(root->left); leftLength != -1){
+        if(int rightLength = calculateDepth(root->right); rightLength != -1){
+            if(std::abs(leftLength - rightLength) <= 1){
+                return 1 + std::max(rightLength, leftLength);
+            }
+        }
+    }
+    return -1;
 }
-bool isBalanced(TreeNode* root) {
+bool isBalanced(TreeNode* root){
     bool resultFlag = true;
-    calculateDepth(root, resultFlag);
-    return resultFlag;
+    return (calculateDepth(root) != -1);
 }
