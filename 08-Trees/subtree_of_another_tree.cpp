@@ -8,9 +8,11 @@ bool checkTree(TreeNode* node_1, TreeNode* node_2) {
     return checkTree(node_1->left, node_2->left) && checkTree(node_1->right, node_2->right);
 }
 bool isSubtree(TreeNode* root, TreeNode* subRoot) {
-    if(checkTree(root, subRoot)) return true;
+    if(!subRoot) return true; // Empty subtree will match either empty root or a leaf node in original tree
 
-    if(!root) return false;
+    if(!root) return false; // If root becomes empty when subroot is not, no point checking further
+
+    if(checkTree(root, subRoot)) return true;
     
     return isSubtree(root->left, subRoot) || isSubtree(root->right, subRoot);
 }
