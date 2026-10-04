@@ -148,8 +148,10 @@ Process the tree one level at a time using the level-snapshot trick.
 * *Use for:* Level-Order Traversal, Right-Side View (last node per level), level averages/max, minimum depth (first leaf found = shallowest), zig-zag traversal.
 
 ### Pattern 4: BST-Specific Search (Exploit the Ordering)
-Because a BST is sorted by structure, you binary-search it: at each node compare against `val` and descend left or right — never both. This is where all your Binary Search intuition transfers directly.
+Because a BST is sorted by structure, you binary-search it: at each node compare against `val` and descend left or right — **never both**. This is where all your Binary Search intuition transfers directly.
 * *Use for:* Search in a BST, Insert/Delete, Lowest Common Ancestor in a BST (the split point where target values diverge), Kth Smallest (in-order traversal stops at the k-th emit), validating a BST (in-order must be strictly increasing).
+* **The space insight — single-path descent needs NO stack and NO recursion (`O(1)` space).** This is the part that's easy to miss. The generic tree template reaches for a stack/recursion because at each node you must explore *both* children, so you need somewhere to remember the branch you haven't walked yet. A BST **search-style** operation never branches: the ordering tells you to go *either* left *or* right, so there is nothing to remember and nothing to backtrack to. You just reassign a single `current` pointer in a loop and walk one root-to-node path. **This is literally iterative binary search on a sorted array** — the same `O(1)`-space, no-auxiliary-structure walk, just following child pointers instead of adjusting `lo`/`hi` indices. Reaching for a `std::stack` here is dead weight: it would never hold more than one element.
+* **The crucial caveat — this only applies to single-path descent.** The moment a BST problem must *visit many/all nodes* (Kth Smallest, Validate BST, range-sum spanning both sides), you **do** branch again, and the stack/recursion comes back — because now you have a left side to resume after finishing a right side. So the rule is **not** "BSTs never need recursion"; it's: **single root-to-target path → `O(1)` iterative; traversal that touches both subtrees → `O(H)` stack/recursion.** Search, Insert, Delete, LCA, floor/ceil, closest-value are single-path; in-order-based queries are traversals.
 
 ### Pattern 5: Construct / Serialize from Traversals
 Rebuild a tree from traversal orders, or flatten a tree to a string and back. Pre-order gives you roots-first (ideal for rebuilding top-down); in-order locates the split between left and right subtrees.
@@ -339,3 +341,29 @@ TreeNode* invertTree(TreeNode* root) {
         * **The unifying idea:** trade the brute force's *repeated top-down re-comparison* for a *single bottom-up precompute* of a comparable signature. That's the whole "more optimal" claim.
     * **What to actually say in an interview:** lead with this $O(M \times N)$ nested-DFS — it's clean, obviously correct, and the expected first answer. Mention the serialize-KMP / Merkle-hash $O(M+N)$ refinements as the "can we do better?" follow-up, and name the serialization delimiter/null-marker trap to show you know where it bites.
 * **Time & Space Complexity:** $O(M \times N)$ Time worst case (identity check at each anchor) / $O(H_{root})$ Space for the recursion stack. The serialize-KMP and Merkle-hash variants reach $O(M + N)$ time at the cost of $O(M + N)$ extra space for the strings/hash store.
+
+### [7] Lowest Common Ancestor of a BST
+
+> First problem that **exploits the BST ordering** instead of treating the tree as a generic bag of nodes. The whole thing is binary search wearing a tree costume — and the real lesson is that it needs **neither recursion nor a stack**: `O(1)` space, one pointer walking one path down.
+
+* **The Core Pattern:** BST-guided descent (**Pattern 4**). Normalize so `p` is the smaller value and `q` the larger, then from the root compare the current node against the `[p, q]` window:
+    * `current->val` is **inside `[p, q]`** → `p` and `q` sit on opposite sides (or one *is* this node) → this is the **split point = the LCA**. Return it.
+    * `current->val < p` → both targets are larger → the LCA is to the **right**. Descend right.
+    * `current->val > q` → both targets are smaller → descend **left**.
+    ```cpp
+    TreeNode* current = root;
+    while (current) {
+        if (current->val >= p->val && current->val <= q->val) return current; // split point
+        current = (current->val <= p->val) ? current->right : current->left;   // one direction only
+    }
+    ```
+* **The "Gotcha":**
+    * **The signature hands you `TreeNode*`, so compare `->val`, not the pointers.** The silly-but-classic slip: writing `p <= current->val` compares a *pointer* against an *int*. BST comparisons are always on `->val`. (This is the tree analogue of comparing iterators instead of the values they point to.)
+    * **Normalize `p ≤ q` once, up front.** The `current->val >= p->val && current->val <= q->val` window check only works if `p` is genuinely the lower bound. The one-line `if (p && q && p->val > q->val) return lowestCommonAncestor(root, q, p);` swap at the top guarantees it — a single recursive bounce that re-enters with the arguments ordered, then never fires again. (You *could* instead write a direction test that doesn't assume an order, but normalizing is cleaner and keeps the window check trivial.)
+    * **The inverted push guard — and why it couldn't bite the way a generic tree would.** The first draft (stack version) pushed children under `if (!node->left)` / `if (!node->right)` — the negation inverted, pushing *null* children. In a generic branching traversal that's a crash (you'd pop a `nullptr` and dereference it). Here it's masked by a deeper truth: **this walk only ever follows one direction, so the stack never holds more than a single node anyway** — which is the tell that the stack was never needed.
+* **The Struggle & Insights:**
+    * **The binary-search intuition is the unlock, and it transfers verbatim from the Binary Search topic.** "If the node is below `p`, go to the higher branch (right); otherwise go to the lower branch (left)" is exactly `lo`/`hi` narrowing on a sorted array — except you follow child pointers instead of recomputing a `mid` index. The BST *is* the sorted array, pre-partitioned by structure.
+    * **The big realization — the stack was dead weight (answering "do BST problems need a stack?").** The first solution carried a `std::stack`, out of habit from the generic tree template. The template needs a stack because each node has *two* children to explore and you must remember the branch not taken. **A BST search-descent never branches** — the ordering picks exactly one child — so there's nothing to remember, nothing to backtrack to, and the stack never holds more than one element. Drop it for a single `current` pointer and the solution is `O(1)` space. Not foolish to have reached for the stack — it's the right default for trees in general; the skill is *noticing when the ordering collapses the branching* and the auxiliary structure becomes pure overhead. (See the expanded **Pattern 4** in §2.)
+    * **But don't over-generalize.** "BSTs don't need recursion/stack" is only true for **single-path** operations (search, insert, delete, LCA, floor/ceil, closest). The moment a BST problem must visit *many* nodes — Kth Smallest, Validate BST, range sums spanning both subtrees — you branch again and the stack/recursion returns. The dividing line is *single root-to-target path vs. full/partial traversal*.
+    * **Why BST LCA is strictly simpler than general-tree LCA (`[Pattern 6]`).** In an unordered tree you must *search both subtrees* for `p` and `q` and detect where they split — inherently `O(N)` and recursive. The BST ordering lets you *walk straight to* the split point without exploring anything off-path: `O(H)` time, `O(1)` space.
+* **Time & Space Complexity:** $O(H)$ Time — one root-to-split-point descent ($O(\log N)$ balanced, $O(N)$ skewed) / **$O(1)$ Space** — a single reassigned pointer, no stack, no recursion. (The recursive normalization bounce adds at most one extra frame and can be hoisted into an iterative swap if you want strict `O(1)`.)
