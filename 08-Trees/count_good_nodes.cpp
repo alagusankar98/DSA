@@ -1,16 +1,11 @@
-void countGoodNodes(TreeNode* root, int maxSoFar, int& goodNodeCount){
-    if(!root) return;
+int countGoodNodes(TreeNode* root, int maxSoFar){
+    if(!root) return 0;
 
-    if(root->val >= maxSoFar){
-        goodNodeCount++;
-        maxSoFar = root->val;
-    }
+    int currentCount = (root->val >= maxSoFar) ? 1 : 0;
+    maxSoFar = std::max(maxSoFar, root->val);
 
-    countGoodNodes(root->left, maxSoFar, goodNodeCount);
-    countGoodNodes(root->right, maxSoFar, goodNodeCount);
+    return currentCount + countGoodNodes(root->left, maxSoFar) + countGoodNodes(root->right, maxSoFar);
 }
 int goodNodes(TreeNode* root) {
-    int goodNodeCount = 0;
-    countGoodNodes(root, std::numeric_limits<int>::min(), goodNodeCount);
-    return goodNodeCount;
+    return countGoodNodes(root, std::numeric_limits<int>::min());
 }
