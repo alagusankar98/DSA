@@ -126,6 +126,7 @@ For a balanced tree, `H = O(log N)`; for a skewed tree, `H = O(N)`. BFS space is
     * **Top-down:** pass accumulated state *down* as a parameter (e.g., current depth, path sum so far). The leaf reports the finished answer.
     * **Bottom-up:** *return* computed state *up* from children, combine at the parent (e.g., subtree height, node count, validity). This is post-order in disguise and is usually the more powerful pattern.
 * **The out-of-band accumulator:** for problems that compute a global answer while returning something else per node (e.g., "diameter" returns height but tracks max diameter), thread a `int&` reference (or a small captured variable) through the recursion instead of trying to cram two return values into one.
+* **Sentinel bounds vs. legal data (`[11]`):** if the sentinel (`INT_MIN`/`INT_MAX`) is itself a legal node value, widen the bounds to `long long`. Bare `long` is only 32 bits on Windows and on ARM Cortex-M. Also, `numeric_limits<double>::min()` is the smallest *positive* double; the most negative one is `lowest()`.
 * **`std::optional` / sentinels for "no value":** when a subtree can legitimately have no answer, prefer an explicit sentinel or `std::optional<int>` over magic numbers like `-1` that could collide with real values.
 
 ---
@@ -446,3 +447,41 @@ TreeNode* invertTree(TreeNode* root) {
     * **Nits in the current code:** `return countGoodNodes(...);;` has a stray double semicolon. `int currentCount = (root->val >= maxSoFar) ? 1 : 0;` can just be `int currentCount = root->val >= maxSoFar;`: a `bool` converts to `0`/`1`, and the compiler emits the same branchless `setge` instruction either way, so it's purely style.
 
 * **Time & Space Complexity:** $O(N)$ Time (each node visited once) / $O(H)$ Space for the recursion stack ($O(\log N)$ balanced, $O(N)$ skewed). Same for both versions.
+
+### [11] Validate Binary Search Tree
+
+> This one took a long time to see, and the trap you fell into is the most famous one in binary trees. Nearly everyone's first attempt checks each node only against its **parent**. The fix is the same "pass state down by value" tool as `[10]` Good Nodes, but now with **two** values carried down, a floor and a ceiling, and each turn updates only **one** of them.
+
+* **The Core Pattern:** Top-down DFS (**Pattern 2**, pre-order) with a **valid range** `(floor, ceiling)` carried down by value. At each node: if `val` is not strictly inside `(floor, ceiling)`, the tree is invalid. Otherwise:
+    * **Going left:** the floor is **inherited unchanged** and the ceiling becomes `node->val`, because everything down here must be smaller than me.
+    * **Going right:** the ceiling is **inherited unchanged** and the floor becomes `node->val`, because everything down here must be bigger than me.
+    * The root starts with no limits, `(-∞, +∞)`.
+    ```cpp
+    return checkBST(root->left, floor, root->val) && checkBST(root->right, root->val, ceiling);
+    ```
+
+* **Your intuition, tightened by one word.** You wrote: *"When I traverse left, the ceiling should be current node's value, but the floor can be global."* That's right, except the floor isn't **global**. It's **inherited**: whatever floor *this node* received from above. It's only global (`-∞`) at the root. That one word is the whole problem. A concrete way to read it: **a node's floor is the value of the nearest ancestor where the path turned right, and its ceiling is the nearest ancestor where it turned left.** Every node's range is just the two most recent "turns" on its path.
+
+* **The "Gotcha" — why each earlier attempt failed:**
+    * **Attempt 1 — checking only against the parent (`isLeft` flag). This is the grandparent trap.** Tree `10 → left 5 → right 15`: `15 > 5`, so it obeys its parent. But `15` sits in `10`'s **left** subtree, where everything must be `< 10`. A BST rule is about the **whole subtree**, not just the edge to the parent. So each node has to know the limits set by *every* ancestor, and the parent alone isn't enough information. Whether a node is a left or right child stops mattering once the range carries that information.
+    * **Attempt 2 — running min/max over the whole path.** This was closer, since you saw you needed more than the parent. But `min`/`max` over *all* ancestors mixes both directions together. Going right lowers nothing, yet your running `min` still carries values from left turns higher up. That's the "I'm on the right side, but I still need characteristics of the left side" knot. The fix is not "the path's min and max". It's that **each direction of turn updates only its own limit**: left turns set ceilings, right turns set floors. You don't need both sides' characteristics at once, because the range carries exactly the two that matter.
+    * **Attempt 3 — the right logic with arguments in the wrong slots.** The function took `(minVal, maxVal)`, but the call sites passed them in swapped order in three places: the initial call (`max(), min()`), the left call (moved the floor instead of the ceiling), and the right call (moved the ceiling instead of the floor). Same-typed adjacent parameters are a classic place for silent bugs, since the compiler can't catch a swap. Your final code renamed them **`floor, ceiling`** and always passed them in **low-then-high order**, like the interval `(floor, ceiling)`. That naming is what fixed it, and it's a habit worth keeping.
+    * **Strict `<`, not `<=`.** LeetCode's BST definition is *strictly* less on the left and *strictly* greater on the right, so a duplicate value makes the tree invalid. That's why the check is `val >= ceiling || val <= floor → false`.
+
+* **The C++ landmines (the part that felt like a minefield):**
+    * **The `INT_MIN` / `INT_MAX` collision → widen the bounds.** With `int` bounds seeded to `INT_MIN`/`INT_MAX`, a perfectly valid node whose value *is* `INT_MIN` fails `val <= floor` (equal, not strictly greater). The sentinel collides with real data. That's the same "magic value that could collide" warning from §1, and the opposite of `[4]` Balanced, where `-1` was safe because heights are never negative. Here the full `int` range is legal data, so the sentinels have to live **outside** that range. A 64-bit bound does that.
+    * **`long` is not reliably 64-bit. Use `long long` (or `int64_t`).** The C++ standard only guarantees `long ≥ 32 bits`. Its actual width depends on the platform's **data model**:
+        * **LP64** (64-bit Linux/macOS, what LeetCode runs on): `long` = 64 bits. Your first pass worked by luck of the platform.
+        * **LLP64** (64-bit Windows): `long` = 32 bits. That brings back the `INT_MIN` collision.
+        * **ILP32**, which is **your world: ARM Cortex-M / STM32**: `long` = 32 bits.
+        `long long` is guaranteed ≥ 64 bits everywhere. If you want the width spelled out, `int64_t` from `<cstdint>` is the embedded-style choice. Either is right. Bare `long` is the trap.
+    * **`std::numeric_limits<double>::min()` is NOT negative.** For integer types, `min()` is the most negative value. For floating-point types, `min()` is the **smallest positive normalized** value (~`2.2e-308`, the closest a double can get to zero before losing precision). The most-negative double is **`lowest()`**. Integer limits answer "how far can I count?", and float limits answer "how close to zero can I resolve?". A double bound (`-infinity()`) would *work* here, but mixing float and int comparisons is a bad habit, so stick with a wider integer.
+    * **`static_cast<long long>(root->val)` everywhere is overdoing it.** Comparing or passing an `int` against or into a `long long` triggers C++'s **implicit widening conversion**: the `int` is sign-extended to 64 bits automatically, with zero chance of losing data. The compiler emits the same sign-extend instruction with or without your cast, so it adds no safety and no speed, only noise. **Write explicit casts for *narrowing* conversions** (64 → 32, signed ↔ unsigned), where data can be lost and you want both the compiler and the reader to see that you meant it. Widening is free and implicit.
+
+* **The Struggle & Insights:**
+    * **Same tool as `[10]`, one level up.** Good Nodes carried *one* value down by value (`maxSoFar`). Validate BST carries *two* and updates them **asymmetrically** depending on which way you turn. Backtracking is still free: the right child receives this frame's untouched `floor`, not whatever the left subtree narrowed it to.
+    * **`&&` short-circuit again.** The first violation found on the left aborts everything without touching the right subtree, the same propagate-failure tool from `[4]`/`[5]`.
+    * **Alternative worth knowing — in-order traversal.** From §1: an in-order walk of a BST emits a sorted sequence. So the tree is valid iff each value is strictly greater than the **previous value the in-order walk printed**. Keep one `prev` (by reference, or a `TreeNode*` that starts as `nullptr`). Same $O(N)$/$O(H)$. It's elegant, and it's the exact engine for the next problem (Kth Smallest). The range method is the more direct answer to "what rule does each node obey?".
+    * **Alternative that skips widening entirely:** pass the bounds as `TreeNode*` (the ancestor that set the limit), with `nullptr` meaning "no limit". No sentinel, so nothing can collide, and it works for any value type. Good to mention if an interviewer asks "what if the values were `int64_t`?", because then there's no wider integer left to step up to.
+
+* **Time & Space Complexity:** $O(N)$ Time (each node checked once, with early exit on the first violation) / $O(H)$ Space for the recursion stack ($O(\log N)$ balanced, $O(N)$ skewed).
