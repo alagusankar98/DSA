@@ -65,10 +65,54 @@ That's exactly why `maxDepth` returns `1` for a single node even though its *edg
 
 ### The Two Traversal Families
 
-**Depth-First Search (DFS)** — dive to the bottom before backtracking. Three orderings, defined by *when you process the current node relative to its children*:
-* **Pre-order** (`Node → Left → Right`): process root first. Used for *copying/serializing* a tree top-down.
-* **In-order** (`Left → Node → Right`): process root in the middle. **On a BST this emits sorted order** — the most exploited property in the whole topic.
-* **Post-order** (`Left → Right → Node`): process root last. Used when a node's answer *depends on its children's answers* (height, deletion, subtree sums) — you must compute the children before you can resolve the parent.
+**Depth-First Search (DFS)**: dive to the bottom before backtracking. It comes in three "orders": **pre-order**, **in-order**, and **post-order**. These are **not three different walks.**
+
+#### Pre / In / Post-order: same walk, different moment of work
+
+**The walk never changes.** Every recursive DFS physically does the same thing: go root → leaf, bounce back, try the other branch, bounce back. You already know that walk. The *only* thing the three names describe is **at which moment you do the node's "work"**: the `count++`, the comparison, the `push_back`, the `max`.
+
+**The three-visits model.** During that walk, your code passes through every node **three times**:
+1. **Arriving** from the parent, before touching either child.
+2. **Between** the children: left subtree finished, right not started.
+3. **Leaving** back to the parent: both subtrees finished.
+
+The name of the traversal is just **which of those three moments holds the work**:
+```cpp
+void dfs(TreeNode* node) {
+    if (!node) return;
+    /* moment 1 → work here = PRE-order  (Node → Left → Right) */
+    dfs(node->left);
+    /* moment 2 → work here = IN-order   (Left → Node → Right) */
+    dfs(node->right);
+    /* moment 3 → work here = POST-order (Left → Right → Node) */
+}
+```
+It's one line of code moving around. The call stack, time ($O(N)$) and space ($O(H)$) are identical for all three.
+
+**Watch it on a real tree.** Same tree, same walk. Only the line that does `print(val)` moves:
+```text
+            4
+          /   \
+         2     6          Pre-order  (print on arrival):  4 2 1 3 6 5 7
+        / \   / \         In-order   (print in between):  1 2 3 4 5 6 7   ← sorted!
+       1   3 5   7        Post-order (print on leaving):  1 3 2 5 7 6 4
+```
+* **Pre-order** prints a parent *before* anything below it, so the root comes first.
+* **Post-order** prints a parent *after* everything below it, so the root comes last.
+* **In-order** prints a node after its entire left subtree and before its entire right subtree, so it comes out **left-to-right**.
+
+**Picking one: ask "what does this node's work need?"**
+
+| Order | The node's work needs… | Information flows | Mental image | Problems you've solved with it |
+| --- | --- | --- | --- | --- |
+| **Pre** | only what its **ancestors** handed down | **down** (parameters) | The boss: "I act first, then send my kids off with instructions." | `[5]` Same Tree, `[9]` Right Side View DFS (mirrored: Node → **Right** → Left), `[10]` Good Nodes (`maxSoFar`), `[11]` Validate BST (`floor`/`ceiling`) |
+| **Post** | its **children's** results | **up** (return values) | The manager: "I can't write my report until both employees hand me theirs." | `[2]` Max Depth, `[3]` Diameter, `[4]` Balanced |
+| **In** | the **sorted position** (BST only) | left-to-right | The reader: "everything smaller first, then me, then everything bigger." | Not yet. It's the engine for **Kth Smallest** (next). |
+| **Either** | nothing (a local, independent action) | none | | `[1]` Invert: swap on arrival or on leaving, same result |
+
+**Why in-order on a BST comes out sorted — not magic, just the BST rule.** At any node, *everything* in its left subtree is smaller and *everything* in its right subtree is bigger. In-order finishes the **entire** left subtree before doing the node's work, then does the whole right subtree. So every smaller value is emitted before the node, and every bigger value after it. That holds at every node, recursively, so the whole output is ascending. (In-order on a *non*-BST still visits left-to-right, but the values come out in no special order. The sorting comes from the BST rule, not the traversal.)
+
+**Real functions can work at more than one moment.** The label names where the *main decision* happens. `[10]` Good Nodes (return-value version) checks "am I good?" on **arrival** (pre), but adds up `mine + left + right` on **leaving** (post): data flows down *and* up in one function. That's fine. The question "what does the work at this moment need?" still tells you where each piece goes.
 
 **Breadth-First Search (BFS)** — process level by level, left to right. Also called **level-order**.
 
@@ -126,6 +170,7 @@ For a balanced tree, `H = O(log N)`; for a skewed tree, `H = O(N)`. BFS space is
     * **Top-down:** pass accumulated state *down* as a parameter (e.g., current depth, path sum so far). The leaf reports the finished answer.
     * **Bottom-up:** *return* computed state *up* from children, combine at the parent (e.g., subtree height, node count, validity). This is post-order in disguise and is usually the more powerful pattern.
 * **The out-of-band accumulator:** for problems that compute a global answer while returning something else per node (e.g., "diameter" returns height but tracks max diameter), thread a `int&` reference (or a small captured variable) through the recursion instead of trying to cram two return values into one.
+* **`TreeNode*& p` is a reference to a pointer (`[11]`).** In a *declaration*, `*` and `&` build a type, read right-to-left. They only "cancel" in an *expression* (`*&x == x`). Use it when a recursion must reassign a shared pointer, like a `prev` node. The reverse, `TreeNode&*`, is illegal.
 * **Sentinel bounds vs. legal data (`[11]`):** if the sentinel (`INT_MIN`/`INT_MAX`) is itself a legal node value, widen the bounds to `long long`. Bare `long` is only 32 bits on Windows and on ARM Cortex-M. Also, `numeric_limits<double>::min()` is the smallest *positive* double; the most negative one is `lowest()`.
 * **`std::optional` / sentinels for "no value":** when a subtree can legitimately have no answer, prefer an explicit sentinel or `std::optional<int>` over magic numbers like `-1` that could collide with real values.
 
@@ -485,3 +530,77 @@ TreeNode* invertTree(TreeNode* root) {
     * **Alternative that skips widening entirely:** pass the bounds as `TreeNode*` (the ancestor that set the limit), with `nullptr` meaning "no limit". No sentinel, so nothing can collide, and it works for any value type. Good to mention if an interviewer asks "what if the values were `int64_t`?", because then there's no wider integer left to step up to.
 
 * **Time & Space Complexity:** $O(N)$ Time (each node checked once, with early exit on the first violation) / $O(H)$ Space for the recursion stack ($O(\log N)$ balanced, $O(N)$ skewed).
+
+#### Variant: Bounds as Nodes Instead of Numbers (committed alternate)
+
+> This variant was worked out backwards from the `long long` version, so it felt like magic. It isn't a new algorithm. It's **the same algorithm with one change: how a limit is stored.** If you can say why the `long long` version works, you already know why this one works.
+
+* **The one idea: a limit has two pieces of information, "is there one?" and "what is it?".** The numeric version had to squeeze both into a single number. It used `-∞`/`+∞` to mean "no limit", and since `int` has no infinity, it faked one with a value from a bigger type, `LLONG_MIN`. That's the whole reason widening was needed: **"no limit" had to be encoded as a number, and every `int` is potentially a legal node value**, so the fake had to live outside the `int` range.
+  A pointer **already has a spare value that no real node can ever have: `nullptr`**. So:
+    * `floorNode == nullptr` → **no floor** (that's the old `-∞`)
+    * `floorNode != nullptr` → **the floor is `floorNode->val`**
+  "Is there a limit?" goes in the pointer itself, and "what is it?" is the value it points to. Nothing can collide, because no real node lives at address `0`. This is the same trick as a **valid bit** next to a hardware register, or `std::optional<int>`: you keep the "is it present?" flag *out-of-band* instead of reserving a magic value inside the data.
+
+* **The line-by-line mapping.** Put the two versions side by side and every line corresponds:
+
+    | `long long` version | Node version | Meaning |
+    | --- | --- | --- |
+    | `floor = LLONG_MIN` | `floorNode = nullptr` | no floor yet |
+    | `ceiling = LLONG_MAX` | `ceilingNode = nullptr` | no ceiling yet |
+    | `root->val <= floor` | `floorNode && root->val <= floorNode->val` | if a floor *exists*, am I at or below it? |
+    | `root->val >= ceiling` | `ceilingNode && root->val >= ceilingNode->val` | if a ceiling *exists*, am I at or above it? |
+    | left: `(floor, root->val)` | left: `(floorNode, root)` | keep the floor, **I become the ceiling** |
+    | right: `(root->val, ceiling)` | right: `(root, ceilingNode)` | **I become the floor**, keep the ceiling |
+
+    The only thing that moved is that you pass **the node that set the limit** (`root`) instead of **its value** (`root->val`). The value is read later, when it's needed, via `->val`.
+
+* **Why the `ceilingNode && …` part is needed.** In the numeric version, every comparison was always legal, because the infinities were real numbers you could compare against. Here a missing limit is `nullptr`, and `nullptr->val` crashes. The `&&` short-circuit is the guard: *"only if a ceiling exists, compare against it."* If `ceilingNode` is null, the right side never runs, so there's no dereference and the check is skipped. Skipping it is correct, because with no ceiling nothing can violate it. It's the same "check presence, then use" shape as `if (node->left) q.push(node->left);`.
+
+* **The trace that makes it concrete.** Tree `10 → left 5 → right 15` (the grandparent-trap tree):
+    * `checkBST(10, null, null)`: no floor, no ceiling, so both checks are skipped and the node is valid. Go left with `(null, node10)`.
+    * `checkBST(5, null, node10)`: no floor, so that check is skipped. The ceiling exists: is `5 >= 10`? No, so the node is valid. Go right with `(node5, node10)`.
+    * `checkBST(15, node5, node10)`: the ceiling exists: is `15 >= 10`? **Yes → return false.**
+    It's the exact same verdict as the numeric version's `(5, 10)` range, and you can read the limits straight off the nodes.
+
+* **What it costs in hardware.** A pointer is 8 bytes, the same as a `long long`, so stack frames are the same size. Each comparison adds one null-check branch (well-predicted, since it's almost always non-null after the first couple of levels) and one load of `ancestor->val`. That ancestor was visited moments ago, so its cache line is almost certainly still hot. In practice there's no measurable difference.
+
+* **When to reach for it:** when there's **no wider type to step up to** (the values are already `int64_t`), or when the values aren't integers at all (any type that supports `<` works, because no sentinel is ever invented). In an interview, lead with the `long long` version, which reads more simply, and mention this one as the answer to "what if the values were 64-bit?". It shows you understand *why* the sentinel worked, not just that it did.
+
+#### Variant: In-Order Traversal with a `prev` Pointer (third version)
+
+> Also worked backwards and still felt like magic. There are two separate things to untangle: **(1)** why "sorted in-order" proves the tree is a BST, and **(2)** what `TreeNode*& prev` actually is.
+
+* **(1) The idea: it's "is this array sorted?", with the array generated on the fly.** You already know how to check that an array is strictly increasing: walk it once, remembering only the previous element: `if (a[i] <= a[i-1]) return false;`. You never need the whole array, just the last thing you read. From §1, an in-order walk of a valid BST **reads the values in sorted order**. So: **a tree is a valid BST iff its in-order sequence is strictly increasing.** The recursion produces that sequence one value at a time without ever storing it, and `prev` is your `a[i-1]`.
+* **Mapping the code onto the three moments (§1):**
+    * **Moment 1 (arriving):** nothing to do.
+    * **Recurse left:** `if (!checkBST(root->left, prev)) return false;` reads the *entire* smaller-valued side first, and aborts if anything in it was already out of order.
+    * **Moment 2 (in between) is the "read this element" step:** `if (prev && root->val <= prev->val) return false;` checks "am I bigger than the last value read?", then `prev = root;` makes me the last value read.
+    * **Recurse right:** reads the bigger-valued side, with `prev` now pointing at me.
+* **Why `prev` is a node pointer, not an `int`:** it's the same reason as the node-bounds variant above. `nullptr` means "nothing read yet", so the very first (smallest) node has nothing to compare against and passes. There's no `INT_MIN` sentinel to collide with a legal value.
+* **How it catches the grandparent trap with no floor or ceiling.** Tree `10 → left 5 → right 15`. In-order reads it as **`5, 15, 10`**:
+    * Read `5`: `prev` is null, so it passes. `prev = 5`.
+    * Read `15` (5's right child): is `15 <= 5`? No, so it passes. `prev = 15`.
+    * Back up to `10`: is `10 <= 15`? **Yes → return false.**
+    The violation is *detected at a different node* than in the range version. There, `15` failed its own check against ceiling `10`. Here, `10` fails because the value read just before it (`15`) is bigger. Same verdict, seen from the other end. Every ancestor's rule gets checked automatically, because breaking any of them puts some value in the wrong place in the sequence.
+
+* **(2) `TreeNode*& prev` — the `*` and `&` don't cancel. Here's why.**
+    * **"`*&` cancels" is true only in *expressions*.** In an expression, `&x` means "address of `x`" and `*p` means "what `p` points to", so `*&x` is just `x`. Those are **operators** acting on values.
+    * **In a *declaration*, `*` and `&` aren't operators; they build a type.** `TreeNode* p` means "p is a pointer to TreeNode", and `int& r` means "r is a reference to an int". Nothing gets computed, so nothing can cancel.
+    * **Read the declaration right-to-left:** `TreeNode*& prev` means "`prev` is a **reference** (`&`) to a **pointer** (`*`) to a `TreeNode`". It's exactly `int& count` from `[10]` (A), with `int` replaced by `TreeNode*`. If the symbols are what's confusing, a type alias makes it obvious:
+        ```cpp
+        using NodePtr = TreeNode*;
+        bool checkBST(TreeNode* root, NodePtr& prev);   // identical meaning: a reference to a pointer variable
+        ```
+    * **Why it must be a reference: the same rule as every shared accumulator.** `prev` is **whole-traversal state**: when the left subtree finishes, the parent must see the *last node that subtree read*. If you pass `TreeNode* prev` **by value**, every frame gets its own copy. The `prev = root` deep in the left subtree updates *that frame's copy*, and it disappears on return. The parent then compares against a stale `prev` and misses violations. It's the same reason `maxDiameter` in `[3]` and `count` in `[10]` needed `&`. The rule from `[9]` again: per-path state goes by value, whole-traversal state goes by reference. `prev` belongs to the whole traversal.
+    * **What it is in hardware:** a reference is passed as an address. `TreeNode*& prev` passes **the address of `isValidBST`'s local `prev` variable**, the slot on the stack that holds a pointer. So it's really a `TreeNode**` that the language dereferences for you. `prev = root;` writes `root`'s address into that one shared slot. The equivalent hand-written C is `bool checkBST(TreeNode* root, TreeNode** prev)` with `*prev = root;` and `(*prev)->val`, which is the kind of double pointer you've seen in embedded linked-list code. The reference version is the same machine code with safer syntax.
+    * **The reverse order, `TreeNode&*`, doesn't compile.** A "pointer to a reference" doesn't exist, because a reference isn't an object with its own address. `*&` is the only legal order.
+
+#### Which of the three Validate BST versions to use
+
+| Version | Carries | Sentinel trouble? | Where violations are caught | Use it when |
+| --- | --- | --- | --- | --- |
+| **Range, `long long`** | `floor`, `ceiling` by value (down) | Needs a wider type | At the offending node itself | **Default interview answer**: most direct statement of the rule |
+| **Range, `TreeNode*` bounds** | ancestor nodes by value (down) | None (`nullptr` = no limit) | At the offending node itself | Values already 64-bit / non-integer |
+| **In-order + `prev`** | one `TreeNode*&` shared across frames | None (`nullptr` = nothing read yet) | At the next node read in sorted order | When the problem is framed as "sorted order", and as the **engine for Kth Smallest** |
+
+All three: $O(N)$ time with early exit, $O(H)$ recursion stack.

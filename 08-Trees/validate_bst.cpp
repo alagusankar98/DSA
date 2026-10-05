@@ -1,10 +1,15 @@
-bool checkBST(TreeNode* root, TreeNode* floorNode, TreeNode* ceilingNode){
+bool checkBST(TreeNode* root, TreeNode*& prev){
     if(!root) return true;
 
-    if((ceilingNode && root->val >= ceilingNode->val) || (floorNode && root->val <= floorNode->val)) return false;
+    if(!checkBST(root->left, prev)) return false;
 
-    return checkBST(root->left, floorNode, root) && checkBST(root->right, root, ceilingNode);
+    if(prev && root->val <= prev->val) return false;
+
+    prev = root;
+
+    return checkBST(root->right, prev);
 }
 bool isValidBST(TreeNode* root) {
-    return checkBST(root, nullptr, nullptr);
+    TreeNode* prev = nullptr;
+    return checkBST(root, prev);
 }
