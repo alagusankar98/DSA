@@ -14,7 +14,7 @@ std::vector<std::vector<int>> levelOrder(TreeNode* root) {
             if(node->left) nodeQueue.push(node->left);
             if(node->right) nodeQueue.push(node->right);
         }
-        resultVector.push_back(levelVector);
+        resultVector.push_back(std::move(levelVector));
     }
 
     return resultVector;

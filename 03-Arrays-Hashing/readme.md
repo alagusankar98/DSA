@@ -14,6 +14,20 @@
 
 ### C++ Quirks & Best Practices
 * **NRVO (Named Return Value Optimization):** Do not use `std::move` when returning a local variable (e.g., `return std::move(result);`). The C++ compiler automatically performs NRVO, meaning it constructs the local variable directly in the caller's memory space, completely eliding the copy or move. Using `std::move` disables this optimization and forces a move operation, which is strictly worse.
+* **When to write `std::move` explicitly (and when NOT to) — the decision rule.** `std::move` is **not a move**: it's a *cast* that relabels an lvalue as an rvalue so overload resolution picks the move constructor/assignment over the copy one. The actual work is done by the type's move operations. So the only question is ever: *"will the compiler already treat this as an rvalue without my help?"*
+    * **The move is AUTOMATIC — leave `std::move` off:**
+        * **Returning a local by value** (`return result;`) — implicitly treated as an rvalue, and NRVO usually elides even the move to *zero cost*. Adding `std::move` here is the pessimizing mistake above (compilers flag it with `-Wpessimizing-move`).
+        * **Temporaries / rvalues** (`vec.push_back(makeThing());`) — already bind to the move overload on their own.
+    * **You MUST write `std::move` explicitly:** when passing a **named lvalue you are finished with** into a *sink* that takes ownership — `push_back` / `emplace_back`, a constructor's member init list, or an assignment. The compiler won't auto-move a named variable mid-scope because it can't prove you won't touch it again:
+        ```cpp
+        result.push_back(levelVector);              // COPIES the heap buffer — levelVector is a named lvalue
+        result.push_back(std::move(levelVector));   // moves (O(1) pointer swap) — "I'm done with this"
+        ```
+    * **The guardrails (why "`std::move` everywhere" is wrong):**
+        * **No effect on trivially-copyable types** — moving an `int`, a raw pointer (`TreeNode*`), or a struct of ints is identical to copying. Pure noise that misleads the reader.
+        * **`std::move` on a `const` object silently copies** — it can't bind to a non-const move constructor, so it does nothing but lie about intent.
+        * **A moved-from object is valid-but-unspecified** — reading it afterward is a bug. Only move something you won't touch again (e.g. a loop local that gets reassigned next iteration — safe).
+    * **Rule of thumb:** add `std::move` **only** when handing a *named, owning* object (`vector`, `string`, `unique_ptr`, `map`…) that you're done with into a sink. Everywhere else — returns, temporaries, ints, pointers — leave it bare and let the compiler do the right (often free) thing.
 * **Vector Initialization (Size vs Capacity):** Initializing a vector with a size (e.g., `vector<int> res(nums.size(), 1);`) allows direct index access (`res[i] = ...`) rather than using `.reserve()` and `.push_back()`. It also automatically value-initializes the elements (e.g., to `1`).
 * **`std::string_view` Null-Termination:** A `string_view` is a lightweight, non-owning view over a character sequence. It is **not** guaranteed to be null-terminated. This means you cannot safely pass `.data()` to legacy C-functions or standard functions like `std::stoull()` without risking buffer overruns. 
 * **High-Performance Parsing (`std::from_chars`):** Instead of `stoull()`, use `<charconv>`'s `std::from_chars()`. It takes a start pointer, an end pointer, and a stack-allocated output variable. It returns a result struct containing `.ptr` (pointing to the first unparsed character). It performs no heap allocations and throws no exceptions.
