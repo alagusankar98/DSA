@@ -3,6 +3,8 @@ void getKthNode(TreeNode* root, int& k, TreeNode*& kthNode){
     
     getKthNode(root->left, k, kthNode);
     
+    if(k == 0) return;
+
     k--;
     if(k == 0){
         kthNode = root;
