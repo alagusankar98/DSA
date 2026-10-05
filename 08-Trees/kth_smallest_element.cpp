@@ -1,21 +1,23 @@
-void getKthNode(TreeNode* root, int& k, TreeNode*& kthNode){
-    if(!root || k == 0) return;
-    
-    getKthNode(root->left, k, kthNode);
-    
-    if(k == 0) return;
-
-    k--;
-    if(k == 0){
-        kthNode = root;
-        return;
-    }
-
-    getKthNode(root->right, k, kthNode);
-}
-
 int kthSmallest(TreeNode* root, int k) {
-    TreeNode* kthNode = nullptr;
-    getKthNode(root, k, kthNode);
-    return kthNode->val;
+    std::stack<TreeNode*> treeStack;
+    int i = 0;
+
+    TreeNode* current = root;
+
+    while(current || !treeStack.empty()){
+
+        while(current){
+            treeStack.push(current); // All left nodes pushed to stack
+            current = current->left;
+        }
+
+        auto node = treeStack.top(); treeStack.pop(); // Last left node
+
+        i++;
+        if(i == k) return node->val;
+
+        current = node->right;
+    }
+    
+    return -1;
 }

@@ -135,6 +135,69 @@ void inorder(TreeNode* node) {
     * **Which to prefer:** **Interviews / bounded depth → recursion** (4 lines, proves you understand the traversal). **Production over untrusted or deeply-nested data (user graphs, nested JSON), or memory-constrained embedded → iterative** to eliminate the overflow risk. Balanced trees with mathematically bounded depth (e.g. the Red-Black trees behind `std::map`) are safe to recurse.
 * **Backing container for an explicit DFS stack:** use the default **`std::stack<TreeNode*>`** (deque-backed) when depth is unknown. Same reasoning as the Stack topic guide: a `std::vector` reallocates and copies the whole buffer on growth (latency spikes), while a `std::deque` just links a new fixed-size chunk and never moves existing elements. On embedded you'd instead pre-allocate a fixed-size array sized to the hardware's safe bound.
 
+### Iterative DFS: What the Stack Must Remember
+
+**Why "push root, `while (!stack.empty())`, … what next?" gets stuck.** That opening comes from BFS, and it only carries over to DFS for **pre-order**. To see why, ask what the recursive version's call stack is *remembering* at any moment, because your explicit stack has to remember the same thing.
+
+**The key idea: the call stack stores *where to resume*, and your stack has to replace that.** When recursion calls `dfs(node->left)`, the CPU pushes a **return address**: "when the left side finishes, come back to *this line* in *this node*." With an explicit stack there are no return addresses, just `TreeNode*`s. So the design question for each order is: **what does a node on my stack still owe, and can I tell without a label?**
+
+**Pre-order (`Node → Left → Right`): a node owes nothing once popped.** The work happens on *arrival*, so popping a node means arriving, doing the work, and it's finished. All that's left is to schedule its children. That's why the BFS-style shape works here (it's the `[1]` Invert iterative version):
+```cpp
+if (root) st.push(root);
+while (!st.empty()) {
+    TreeNode* node = st.top(); st.pop();
+    /* work */                                 // arrival = work, node is done
+    if (node->right) st.push(node->right);     // push RIGHT first...
+    if (node->left)  st.push(node->left);      // ...so LEFT is on top (LIFO) and comes out first
+}
+```
+The only difference from BFS is the container. Swap `std::queue` for `std::stack`, and push right before left so left comes out first.
+
+**In-order (`Left → Node → Right`): a node owes its work *after* its left side finishes.** Now popping can't mean "arrive", because when you first reach a node you mustn't do its work yet; the whole left subtree comes first. So the stack holds **nodes I've reached whose left side is still being explored**. They're waiting for their turn. At any moment, that's exactly the chain of `dfs(left)` frames in the recursive version.
+
+The shape changes. You **don't** push the root up front. Instead you carry a `curr` pointer and repeat three moves:
+1. **Dive left:** while `curr` isn't null, push it and step to `curr->left`. Every node down the left edge ("left spine") goes onto the stack, meaning "come back to you once your left side is done."
+2. **Pop and work:** the top node's left side is now finished (it was null, or fully processed already), so this is moment 2. Do the work.
+3. **Turn right:** set `curr = node->right`, and loop. Step 1 then dives the left spine of that right subtree.
+```cpp
+TreeNode* curr = root;
+while (curr || !st.empty()) {
+    while (curr) { st.push(curr); curr = curr->left; }   // 1. dive the left spine  ≈ dfs(left)
+    TreeNode* node = st.top(); st.pop();                 // 2. left side done →
+    /* work */                                           //    moment 2 (in-order)
+    curr = node->right;                                  // 3. turn right          ≈ dfs(right)
+}
+```
+* **Why the loop condition is `curr || !st.empty()`:** right after popping the root (stack now empty), its right subtree may still be unexplored. That pending work lives in `curr`, not on the stack. You're finished only when both are empty.
+* **Why one stack with no labels is enough:** every node on the stack is in the *same* state ("left side in progress, owes work + right side"), so the stack doesn't need to say which state each node is in. The single resume point is implied.
+
+**Trace** on the §1 tree `4(2(1,3), 6(5,7))`. The stack is shown bottom → top:
+
+| Step | Action | Stack | Work emitted |
+| --- | --- | --- | --- |
+| dive from 4 | push 4, 2, 1 | `4 2 1` | |
+| pop 1 | left null → work; `curr = 1->right = null` | `4 2` | **1** |
+| pop 2 | work; `curr = 3` | `4` | **2** |
+| dive from 3 | push 3 | `4 3` | |
+| pop 3 | work; `curr = null` | `4` | **3** |
+| pop 4 | work; `curr = 6` | *(empty, but `curr` ≠ null → keep going)* | **4** |
+| dive from 6 | push 6, 5 | `6 5` | |
+| pop 5, 6, 7 | same pattern | … | **5 6 7** |
+
+The output is `1 2 3 4 5 6 7`, sorted, as it should be for a BST. **Early exit is just a `return` inside the loop** (e.g. Kth Smallest: decrement `k` at step 2 and return when it hits zero). There are no frames to unwind and no "re-check after the call" trap like the one in `[12]`.
+
+**What the in-order stack depth actually measures — the "right staircase" case.** Take the same tree, but give `3` a chain of right children (`3 → 3.1 → 3.2 → 3.3`, written as decimals for readability; with `int` values you'd relabel the whole tree). While the walk moves down that chain, the stack holds just **`4`**, plus briefly whichever node was just pushed: push `3`, pop it, `curr = 3.1`; push `3.1`, pop it, `curr = 3.2`; and so on. It never grows.
+* **Why:** a node is only on the stack while it **owes something**: its work and its right side, pending until its left side finishes. Once popped and worked, a node owes nothing, so **turning right is a jump, not a push.** `4` sits at the bottom the whole time because `3`'s chain is inside `4`'s *left* subtree, so `4` is still owed its work.
+* **So the depth = the number of ancestors you went *left* from**, not the plain depth. A right-leaning chain costs `O(1)` stack; a left-leaning chain pushes every node in a single dive, `O(N)`. That's still "$O(H)$ worst case", but this is the more precise picture.
+* **Contrast with recursion:** `dfs(node->right)` is a *call*, so the frames for `3`, `3.1`, `3.2` all stay alive down the chain, even though they have nothing left to do after that call. (With optimizations on, a compiler *may* turn that last call into a jump, called tail-call optimization, but C++ doesn't guarantee it.) The explicit stack gets that saving for free, which is one more reason the iterative form is the overflow-proof choice.
+
+**Post-order (`Left → Right → Node`): a node owes work *after both* sides finish.** Now the nodes on the stack are in **two different states** ("left side in progress" vs "right side in progress"), and a bare pointer can't tell you which. That's the return-address problem showing up. The two standard workarounds:
+* **Reverse trick:** run the pre-order template but push **left before right**, which gives `Node → Right → Left`. Reverse the output and you get `Left → Right → Node`. It's easy, but you only get the order at the end, so it's no good when a parent needs its children's results *during* the walk.
+* **`lastVisited` pointer:** peek at the top. If it has a right child you haven't just come back from, go explore the right side. Otherwise pop and do the work. That extra pointer is the missing "which state am I in?" information.
+For the bottom-up problems (`[2]`–`[4]`), recursion is so much simpler that you'd only write post-order iteratively when stack depth genuinely forces it (see the stack-overflow notes above).
+
+**Cost:** every version holds at most `H` nodes on the stack, so it's the same $O(H)$ as recursion. Each stack entry is just an 8-byte pointer, though, instead of a full frame (return address + saved registers + locals).
+
 ### BFS: The Queue + Level-Snapshot Trick
 Level-order uses a **`std::queue<TreeNode*>`** (FIFO — first node in is first processed, which is what keeps you moving across a level before descending):
 ```cpp
@@ -631,6 +694,6 @@ All three: $O(N)$ time with early exit, $O(H)$ recursion stack.
         if (k == 0) return;      // answer was found in the left subtree: stop climbing work
         ```
         Same tree, `k = 1`: **11 calls**. That turns $O(N)$ into the intended $O(H + k)$. The general lesson: in a recursive early exit, **every frame that resumes after a call must re-check whether to stop**. The "stop" signal doesn't travel by itself. `[4]`'s `if (left == -1) return -1;` and `[11]`'s `if (!checkBST(left)) return false;` both did that re-check. Here it was missing.
-    * **The iterative version doesn't have this problem.** An in-order walk with an explicit `std::stack` (push the left spine, pop, count, move to the right child) stops with a plain `return` the moment `k` hits zero, and there are no frames to unwind. It's the common interview form, and worth being able to write.
+    * **The iterative version doesn't have this problem** (template and trace in §1, *Iterative DFS: What the Stack Must Remember*). An in-order walk with an explicit `std::stack` (push the left spine, pop, count, move to the right child) stops with a plain `return` the moment `k` hits zero, and there are no frames to unwind. It's the common interview form, and worth being able to write.
 
 * **Time & Space Complexity:** $O(H + k)$ Time with the early-exit fix: walk down the left spine (`H`), then read `k` nodes. Without the fix it degrades to $O(N)$. / $O(H)$ Space for the recursion (or explicit) stack. The order-statistic follow-up gives $O(H)$ per query, at the cost of storing a size in every node.
