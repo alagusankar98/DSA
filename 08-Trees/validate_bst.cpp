@@ -1,10 +1,10 @@
-bool checkBST(TreeNode* root, long long floor, long long ceiling){
+bool checkBST(TreeNode* root, TreeNode* floorNode, TreeNode* ceilingNode){
     if(!root) return true;
 
-    if(root->val >= ceiling || root->val <= floor) return false;
+    if((ceilingNode && root->val >= ceilingNode->val) || (floorNode && root->val <= floorNode->val)) return false;
 
-    return checkBST(root->left, floor, root->val) && checkBST(root->right, root->val, ceiling);
+    return checkBST(root->left, floorNode, root) && checkBST(root->right, root, ceilingNode);
 }
 bool isValidBST(TreeNode* root) {
-    return checkBST(root, std::numeric_limits<long long>::min(), std::numeric_limits<long long>::max());
+    return checkBST(root, nullptr, nullptr);
 }
