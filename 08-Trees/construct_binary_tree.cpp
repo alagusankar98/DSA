@@ -1,12 +1,11 @@
 TreeNode* constructTree(const std::vector<int>& preorder, const std::vector<int>& inorder, size_t& currentIdx, int lowIdx, int highIdx){
     if(lowIdx > highIdx) return nullptr;
-    if(currentIdx >= preorder.size()) return nullptr;
 
     TreeNode* node = new TreeNode(preorder[currentIdx]); currentIdx++;
 
     // Lookup value in inorder array
     int inorderIdx;
-    for(inorderIdx = 0; inorderIdx < inorder.size(); inorderIdx++){
+    for(inorderIdx = lowIdx; inorderIdx <= highIdx; inorderIdx++){
         if(inorder[inorderIdx] == node->val) break;
     }
 
