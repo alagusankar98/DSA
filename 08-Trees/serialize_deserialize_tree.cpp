@@ -4,7 +4,8 @@ void serializeString(TreeNode* root, std::string& resultString){
         resultString.append("#,");
         return;
     }
-    resultString.append(std::to_string(root->val) + ",");
+    resultString.append(std::to_string(root->val));
+    resultString.push_back(',');
     serializeString(root->left, resultString);
     serializeString(root->right, resultString);
 }
@@ -17,26 +18,29 @@ string serialize(TreeNode* root) {
     return serializedTreeString;
 }
 
-TreeNode* constructTree(std::string_view data, size_t& currentPos){
-    if(data[currentPos] == '#'){
-        currentPos += 2; // To skip "#" and ","
+TreeNode* constructTree(const char*& startPtr, const char* end){
+    if(startPtr >= end) return nullptr;
+
+    if(*startPtr == '#'){
+        startPtr += 2; // To skip "#" and ","
         return nullptr;
     }
 
     // Get node value
     int nodeVal = 0;
-    auto [nonNumberPos, _] = std::from_chars(data.data() + currentPos, data.data() + data.size(), nodeVal); // Accumulates "-100," to "nodeVal = -100" and "nonNumberPos = pointer to ,"
-    currentPos = (nonNumberPos - data.data()) + 1; // To skip ","
+    auto [nonNumberPos, ec] = std::from_chars(startPtr, end, nodeVal);
+    assert(ec == std::errc() && "Error during number parsing");
+    startPtr = nonNumberPos + 1; // To skip ","
     auto node = new TreeNode(nodeVal);
 
-    node->left = constructTree(data, currentPos);
-    node->right = constructTree(data, currentPos);
+    node->left = constructTree(startPtr, end);
+    node->right = constructTree(startPtr, end);
 
     return node;
 }
 
 // Decodes your encoded data to tree.
-TreeNode* deserialize(string data) {
-    size_t currentPos = 0;
-    return constructTree(data, currentPos);
+TreeNode* deserialize(std::string_view data) {
+    const char* beginPtr = data.data();
+    return constructTree(beginPtr, beginPtr + data.size());
 }
