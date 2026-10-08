@@ -748,3 +748,43 @@ All three: $O(N)$ time with early exit, $O(H)$ recursion stack.
 
 * **Time & Space Complexity:** Bounded scan (commit 2): $O(N^2)$ worst-case time (left-leaning chain; ~$O(N \log N)$ balanced) / $O(H)$ recursion stack, plus the $O(N)$ output tree. **Value→index map, passed by reference (version 3, final):** $O(N)$ time (one $O(N)$ build + $O(1)$ lookups) / $O(N)$ extra space for the map + $O(H)$ stack. (Map passed by value: $O(N^2)$ time and $O(N \cdot H)$ memory, from the copies.)
 
+### [14] Binary Tree Maximum Path Sum
+
+> First Tree Hard, and it felt *easier* than the Medium before it. That's because this is `[3]` Diameter with integers instead of edge counts: the same two-job node, the same `int&` scoreboard, the same "return one branch, score both". The only new material is negative numbers, and they're handled by **one `std::max(0, …)` on each child plus one rule about where that floor goes.**
+
+* **The Core Pattern:** Bottom-Up DFS (**post-order**), because a node can't know the best path below it until both children have reported. That was your first instinct, and it was right. Every node has the same two jobs as in Diameter:
+    * **Side hustle (scoreboard, `int& maxSum`):** *"What if I'm the **peak** of the best path, and it never goes up to my parent?"* My connection upward is unused, so both hands are free: `root->val + leftMax + rightMax`, an upside-down V (left → me → right).
+    * **Main job (return to parent):** *"If my parent connects to me, what's the best it can get through me?"* The path enters me from above, so I can continue down only **one** side: `root->val + max(leftMax, rightMax)`.
+    * Side by side with Diameter, it's the same skeleton:
+
+        | | `[3]` Diameter | `[14]` Max Path Sum |
+        | -- | -- | -- |
+        | Child's contribution | height (≥ 0 automatically) | `max(0, child)` — clamp it |
+        | Scoreboard | `left + right` | `val + left + right` |
+        | Return | `1 + max(left, right)` | `val + max(left, right)` |
+        | Scoreboard seed | `0` (diameter can't be negative) | `INT_MIN` (**answer can be negative**) |
+
+        The `1` in Diameter *is* the node's value: each node "weighs" one edge. Here each node weighs `root->val`. That's why you "had to include the current node" in the return. A parent can't reach your children without passing through you, and paying for you.
+
+* **Why "every path" is covered — the peak argument.** A path can start and end anywhere, which is what makes it look hard. But every path in a tree has exactly **one highest node** (its peak: the node closest to the root). Since each node gets one turn on the scoreboard *as the peak*, and the DFS visits every node, every possible path is tested at its own peak. With clamping, that one formula covers all four shapes you listed: both arms (`val + L + R`), left arm only (R clamped to 0), right arm only (L clamped to 0), and the node alone (both clamped). No `if/else` over the four combinations is needed.
+
+* **The question that stayed murky: "if I keep flooring to 0, how do negative values ever propagate up?"**
+    * **The floor is applied by the *receiver*, never the sender.** Look at where `std::max(0, …)` sits: around the *call*, in the parent. Your `return` statement is **not** clamped. So a node always reports its true best one-armed sum, even if it's negative, and the **parent** decides whether that branch is worth taking. That's why the `[-2]` bridge in the LLM example works: `-2` reports `-2 + 50 = 48` honestly, and `100` is glad to take it.
+    * **Negatives don't need to propagate to be counted.** The all-negative answer is caught *locally*, on the scoreboard, at the node itself, because `root->val` itself is never clamped. Trace `-2` with a single left child `-1`:
+        * At `-1` (a leaf): both children are null → `0`. Scoreboard: `max(INT_MIN, -1 + 0 + 0) = -1`. It returns `-1`.
+        * At `-2`: `leftMax = max(0, -1) = 0` — the parent drops the branch. Scoreboard: `max(-1, -2 + 0 + 0) = -1` stays. It returns `-2`, and nobody uses it.
+        * Answer: `-1`, the single least-negative node. The `-1` never had to climb; it got recorded when it had its turn. Same for the LLM's "`-1` buried among big negatives" case: being the peak of a one-node path *is* its turn.
+    * **Small correction to your write-up:** *every* node runs the return statement, **leaves included**, not just non-leaf nodes. A leaf's children both return `0` (null base case), so a leaf returns its own value and scores its own value. The null `return 0` is safe for the same reason: an empty side contributes nothing, which is exactly what a clamped branch means.
+
+* **The "Gotcha" — every place a slightly wrong formula breaks it:**
+    * **Scoreboard using `val + max(L, R)` instead of `val + L + R`** misses every arch. In the classic `[-10, 9, 20, null, null, 15, 7]`, the best path is `15 → 20 → 7 = 42`, which never touches the root. The one-armed formula only finds `35`.
+    * **Returning `val + L + R` to the parent** hands up a forked path (a T-junction) the parent can't legally extend. That's the same "bent path" bug as returning `left + right` in Diameter.
+    * **Seeding `maxSum = 0`** returns `0` on an all-negative tree. That's the answer for an *empty* path, and the problem requires at least one node. **`INT_MIN` is correct here**, and it's the mirror of Diameter, where `INT_MIN` was the *latent bug* because a diameter can't be negative. Pick the seed from the answer's range, not by habit.
+    * **Clamping the node itself** (`max(0, root->val)`) would turn an all-negative tree's answer into `0`. Only the *optional* parts (the arms) get clamped. The peak is mandatory.
+    * **Overflow check (the systems habit):** LC 124 bounds values to `[-1000, 1000]` with ≤ 3·10⁴ nodes, so any sum is within ±3·10⁷, far below 2³¹. `INT_MIN` is only ever *compared*, never added to (it can't reach a `+`, because the scoreboard always adds the real `root->val` to clamped arms ≥ 0), so there's no wraparound risk. If the constraints were bigger, widen to `long long` (the `[11]` lesson).
+
+* **Insights:**
+    * **Recognize the family, not the problem.** "Path anywhere in the tree" + "combine two children" = the Diameter two-job template. You found it yourself by opening your Diameter solution and seeing a "ditto copy". That cross-reference habit is worth more than this particular solution.
+    * **Clamping as a branch-free "optional include".** `max(0, x)` means "take it if it helps, otherwise act as if it isn't there". It's the same move as Kadane's algorithm on arrays (`cur = max(x, cur + x)`): this problem is basically Kadane's on a tree, which will show up again in 1-D DP.
+
+* **Time & Space Complexity:** $O(N)$ Time (each node reports once, O(1) work per node) / $O(H)$ Space (recursion stack): $O(\log N)$ balanced, $O(N)$ skewed. No extra structures.
