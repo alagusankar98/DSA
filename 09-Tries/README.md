@@ -138,3 +138,35 @@ Load the dictionary into a trie, then run a *different* search (grid DFS / backt
     * **What you lose:** the recursive cleanup depth described above. To keep both benefits, write a destructor that detaches the children into a `std::vector<std::unique_ptr<TrieNode>>` worklist (`std::move` them out) and lets them die one at a time, so no recursion is needed. Worth doing once to really learn ownership transfer.
 
 * **Time & Space Complexity:** `insert` / `search` / `startsWith`: $O(L)$ time per call (L = word / prefix length), $O(1)$ extra space for the walk (one cursor, no recursion). Storage: $O(\text{total characters inserted})$ nodes in the worst case (no shared prefixes), each 216 bytes (26 × 8-byte pointers + `bool`, padded). Destructor: $O(\text{nodes})$ time, with the work stack's peak size bounded by the node count.
+
+### [2] Design Add and Search Words Data Structure
+
+> `[1]`'s trie with one twist: `.` in a search matches **any** letter. You spotted the right shape yourself (recursion that forks at `.`), and the coding took a while. The first committed version had a real correctness bug that simple tests don't catch: **a `.` branch returned the first node that matched the pattern's *length*, even when no word ended there.** The fix is in the second version.
+
+* **The Core Pattern:** Trie + **DFS over children** (§2 Pattern 2). `addWord` is `[1]`'s `insert` unchanged. `search` becomes a recursive walk carrying **(node, index into the pattern)**:
+    * Letter → follow exactly one slot (or fail if it's empty), the same as `[1]`.
+    * `.` → try **every non-null child** with `index + 1`, and stop at the first branch that succeeds.
+    * Pattern used up → the answer is whether a word ends at this node.
+    * This is the Trees "one path → loop; branching → DFS" rule playing out. `[1]` never branched, so a loop worked. `.` branches, so the "come back and try the next sibling" behavior that recursion gives you for free is exactly what's needed.
+
+* **Your "wild search" worry — "26 searches per dot, more dots means more searches".** The fear is 26ᵈ for d dots. The real bound is much better:
+    * **A `.` only follows children that *exist*.** A sparse trie gives a `.` a handful of options, not 26.
+    * **A single search can't visit more nodes than the trie holds,** because each node is reached by one path from the root. Whatever the dot pattern, the worst case is O(total nodes).
+    * **LeetCode 211 also caps it:** at most 2 dots per query, word length ≤ 25. So the realistic worst case is about 26² × 25 steps per query, and the recursion is at most 25 frames deep, which is safe.
+    * Your first idea, "a helper that starts the search from a given node instead of root, called 26 times", **is** the recursion. You just hadn't noticed that the helper can call itself.
+
+* **The "Gotcha" — the prefix-shadowing bug (the lesson of this problem):**
+    * **First version:** `findNode` returned "the node where the pattern ends". `search` checked `isDone` on that node **afterwards**. At a `.`, the loop returned the **first** non-null result.
+    * **Failing case (compiled and confirmed):** `addWord("abcd")`, `addWord("xbc")`, `search(".bc")`. The `.` tries `'a'` first and reaches the node for `"abc"`. That node exists, since it's the prefix of `"abcd"`, but `isDone == false`. The loop returns it immediately, `search` sees `isDone == false`, and answers **`false`**. The `x → b → c` branch, a real word, is never tried. Correct answer: `true`.
+    * **Why tests with only `"xbc"` passed:** without a competing prefix of the same length, the first branch to get to the end *is* the word.
+    * **Why it never bit `[1]`:** with no `.`, there's only **one** path, so "the node where the pattern ends" is unique, and checking `isDone` afterwards is equivalent to checking it inside. **Once the search branches, "did this branch succeed?" has to use the *full* success condition (pattern used up *and* a word ends here) at the moment you decide whether to keep searching siblings.** Checking afterwards only sees whichever branch happened to come first.
+    * **Your question: "does this only happen with wildcards?"** Yes. Only a `.` makes a choice between siblings, so only a `.` can stop too early. Letter-only searches have nothing to fall back to.
+    * **Your fix:** inside the `.` loop, accept a child's result only if it's non-null **and** `isDone`, otherwise keep trying siblings, and return `nullptr` if none succeed. **Verified:** it passes the failing case above and 90,000 random queries checked against a brute-force matcher.
+
+* **Interviewer polish (works as-is; this is about clarity):**
+    * **The helper now has a mixed contract.** On a letter-only path it returns "the end node, which may be just a prefix", and the caller (`search`) still checks `isDone`. Through a `.` it returns "a node where a word definitely ends", because the loop already filtered it. Both are correct, but the success condition (`isDone`) lives in **two places**, so a future edit to one can drift from the other.
+    * **The cleaner version answers yes/no directly:** return `bool`, and make the base case "pattern used up → `return node->isDone;`". Then the `.` loop is "return `true` if any child returns `true`", and `search` is one call. That's one success condition in one place. The rule: **return what the caller actually needs.** Nobody needs the node, only the yes/no. (Returning a node was the right call in `[1]`, where `startsWith` and `search` both needed it.)
+    * Renaming the helper parameter from `root` to `searchNode` fixed the shadowing of the member `root`. 👍
+    * `addWord` is `[1]`'s `insert` copied verbatim. If both lived in one codebase, they'd share one trie class.
+
+* **Time & Space Complexity:** `addWord`: $O(L)$ time. `search`: $O(L)$ for letter-only patterns; with dots, $O(\min(26^d \cdot L,\ \text{total nodes}))$ worst case for d dots, i.e. $O(26^2 \cdot L)$ under LeetCode's 2-dot limit. Space: $O(L)$ recursion depth for `search` (≤ 25 frames), plus the trie's $O(\text{total characters})$ nodes at 216 bytes each.

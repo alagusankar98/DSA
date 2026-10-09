@@ -8,21 +8,21 @@ class WordDictionary {
 private:
     TrieNode* root;
 
-    TrieNode* findNode(std::string_view word, size_t currentIdx, TrieNode* root){
-        if(!root || currentIdx >= word.size()) return root;
+    TrieNode* findNode(std::string_view word, size_t currentIdx, TrieNode* searchNode){
+        if(!searchNode || currentIdx >= word.size()) return searchNode;
 
         if (word[currentIdx] == '.'){
-            for(const auto& node : root->next){
+            for(const auto& node : searchNode->next){
                 if(node){
-                    auto searchNode = findNode(word, currentIdx + 1, node);
-                    if(searchNode) return searchNode;
+                    auto current = findNode(word, currentIdx + 1, node);
+                    if(current && current->isDone) return current;
                 }
             }
             return nullptr;
         }
         int charIdx = word[currentIdx] - 'a';
-        if(!root->next[charIdx]) return nullptr;
-        return findNode(word, currentIdx + 1, root->next[charIdx]);
+        if(!searchNode->next[charIdx]) return nullptr;
+        return findNode(word, currentIdx + 1, searchNode->next[charIdx]);
     }
 public:
     WordDictionary() {
@@ -40,8 +40,7 @@ public:
     }
     
     bool search(std::string_view word) {
-        size_t currentIdx = 0;
-        auto current = findNode(word, currentIdx, root);
+        auto current = findNode(word, 0, root);
         return current && current->isDone;
     }
 
