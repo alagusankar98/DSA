@@ -7,10 +7,10 @@ class TrieNode {
 
 class PrefixTree {
 private:
-    TrieNode* head_;
+    TrieNode* root_;
 
     TrieNode* returnNode(std::string_view word){
-        auto current = head_;
+        auto current = root_;
         for(const char c : word){
             int charIdx = c - 'a';
             if(!current->next[charIdx]) return nullptr; // Character does not exist
@@ -20,11 +20,11 @@ private:
     }
 public:
     PrefixTree() {
-        head_ = new TrieNode();
+        root_ = new TrieNode();
     }
     
     void insert(std::string_view word) {
-        auto current = head_;
+        auto current = root_;
         for(const char c : word){
             int charIdx = c - 'a';
             if (!current->next[charIdx]) current->next[charIdx] = new TrieNode();
@@ -42,9 +42,13 @@ public:
         return returnNode(prefix) != nullptr;
     }
 
+    // Delete copy and move semantics
+    PrefixTree(const PrefixTree&) = delete;
+    PrefixTree& operator=(const PrefixTree&) = delete;
+
     ~PrefixTree() {
         std::stack<TrieNode*> trieStack;
-        if(head_) trieStack.push(head_);
+        trieStack.push(root_);
         while(!trieStack.empty()){
             auto nodeToDelete = trieStack.top(); trieStack.pop();
 
