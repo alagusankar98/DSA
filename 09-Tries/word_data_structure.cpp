@@ -8,20 +8,18 @@ class WordDictionary {
 private:
     TrieNode* root;
 
-    TrieNode* findNode(std::string_view word, size_t currentIdx, TrieNode* searchNode){
-        if(!searchNode || currentIdx >= word.size()) return searchNode;
+    bool findNode(std::string_view word, size_t currentIdx, TrieNode* searchNode){
+        if(!searchNode) return false;
+        if(currentIdx >= word.size()) return searchNode->isDone;
 
         if (word[currentIdx] == '.'){
             for(const auto& node : searchNode->next){
-                if(node){
-                    auto current = findNode(word, currentIdx + 1, node);
-                    if(current && current->isDone) return current;
-                }
+                auto resultFlag = findNode(word, currentIdx + 1, node);
+                if(resultFlag) return true; // Return only when true to give other branches a chance to match, Fail only outside when none of the branches match
             }
-            return nullptr;
+            return false;
         }
         int charIdx = word[currentIdx] - 'a';
-        if(!searchNode->next[charIdx]) return nullptr;
         return findNode(word, currentIdx + 1, searchNode->next[charIdx]);
     }
 public:
@@ -40,8 +38,7 @@ public:
     }
     
     bool search(std::string_view word) {
-        auto current = findNode(word, 0, root);
-        return current && current->isDone;
+        return findNode(word, 0, root);
     }
 
     // Delete default copy constructor

@@ -163,10 +163,33 @@ Load the dictionary into a trie, then run a *different* search (grid DFS / backt
     * **Your question: "does this only happen with wildcards?"** Yes. Only a `.` makes a choice between siblings, so only a `.` can stop too early. Letter-only searches have nothing to fall back to.
     * **Your fix:** inside the `.` loop, accept a child's result only if it's non-null **and** `isDone`, otherwise keep trying siblings, and return `nullptr` if none succeed. **Verified:** it passes the failing case above and 90,000 random queries checked against a brute-force matcher.
 
-* **Interviewer polish (works as-is; this is about clarity):**
-    * **The helper now has a mixed contract.** On a letter-only path it returns "the end node, which may be just a prefix", and the caller (`search`) still checks `isDone`. Through a `.` it returns "a node where a word definitely ends", because the loop already filtered it. Both are correct, but the success condition (`isDone`) lives in **two places**, so a future edit to one can drift from the other.
-    * **The cleaner version answers yes/no directly:** return `bool`, and make the base case "pattern used up → `return node->isDone;`". Then the `.` loop is "return `true` if any child returns `true`", and `search` is one call. That's one success condition in one place. The rule: **return what the caller actually needs.** Nobody needs the node, only the yes/no. (Returning a node was the right call in `[1]`, where `startsWith` and `search` both needed it.)
-    * Renaming the helper parameter from `root` to `searchNode` fixed the shadowing of the member `root`. 👍
+* **Version history — four versions, and why each change happened:**
+
+    | # | State | `findNode` returns | Status |
+    | -- | -- | -- | -- |
+    | 1 | committed `b1fa5d6` (first pass) | node where the pattern ends | ❌ prefix-shadowing bug (above) |
+    | 2 | committed `9511317` | node, but `.` loop accepts only `isDone` nodes | ✅ correct, success check in two places |
+    | 3 | uncommitted attempt | `bool` | ❌ `.` loop returned on the first branch |
+    | 4 | **final** (current file) | `bool`, null check in one place | ✅ correct (verified: 90k random queries vs brute force) |
+
+    * **v2 → v3: why switch to `bool` at all — the "mixed contract".** In v2, a letter-only path returned "the end node, which might be just a prefix", and `search` still had to check `isDone`. Through a `.`, it returned "a node where a word definitely ends", because the loop had already filtered it. Both were correct, but the success condition lived in **two places**, so a later edit to one could drift from the other. The rule: **return what the caller actually needs.** Nobody needed the node here, only yes/no. (Returning a node was right in `[1]`, where `startsWith` and `search` both used it.) In the `bool` version, the base case "pattern used up → `return node->isDone;`" holds the whole success condition, and `search` is one call.
+
+    * **v3's two bugs (the bool attempt that failed):**
+        * **`return findNode(...)` inside the `.` loop.** A `return` in a loop ends the whole function on the first pass. So the loop tried the first existing child and passed up its answer, **true or false**, and the other 25 siblings were never tried. Failing case: `addWord("ab")`, `addWord("cd")`, `search(".d")`. The `.` takes `'a'`, finds no `d` under it, and returns `false`, so `c → d` is never examined. It's the v1 bug in a new form: v1 stopped on a branch that was only a prefix; v3 stopped on *any* branch, outright failures included. **The fix you found:** `.` means "succeed if **any** child succeeds". So only `true` may end the loop early (`if (result) return true;`), and `false` is the answer only **after** every branch has failed (the `return false;` after the loop). It's the same shape as `std::any_of`: short-circuit on the first hit, conclude "no" only after an exhaustive miss.
+        * **`if (!searchNode) return true;` — a missing node counted as a match.** It was never reached in v3 (every caller checked null before recursing), so it was a latent bug, not the failure you saw. Corrected to `return false`.
+
+    * **"What should a null node return?" — the question that stayed murky, and why it's `false`.** The confusion was mixing up **a null node** with **an empty trie**:
+        * **An empty trie is not null.** The constructor always creates the root. A trie with no words is a single root node with 26 null slots and `isDone == false`.
+        * **A null node means "no path continues this way".** The walk tried to step into a slot that was never created, so no stored word spells this pattern. That can never be a successful match, so the answer is `false`.
+        * **`search("")` on an empty trie:** the root is non-null, so the null check is skipped. `currentIdx (0) >= size (0)` is true immediately, so it returns `root->isDone`, which is **`false`** unless `addWord("")` was called. Verified: `0` on an empty trie, and still `0` after `addWord("ab")`.
+        * **Why `false` is right for `search("")`:** `search` asks "was this exact word inserted?", and `""` counts only if it was added. The "it should be true" intuition belongs to **`startsWith("")`** in `[1]`, which *is* true even on an empty trie: every word starts with `""`, and you're already standing at the root, so there's nothing to walk. It's the §1 prefix-vs-word distinction again, applied to the empty string.
+
+    * **v3 → v4: removing the callers' null checks (one check, one place).** With the top-of-function null check returning `false`, the guards at the call sites (`if (node)` before recursing in the `.` loop, and `if (!next[charIdx]) return false` in the letter branch) were doing the same job twice. v4 deletes them and simply recurses into whatever the slot holds, null included. The callee's first line handles it. That's the Trees `[1]` habit again: **let the base case handle null, don't special-case it in the caller.**
+        * **Trade-off:** at a `.`, every empty slot now costs a function call that immediately returns `false` (up to 25 wasted calls per `.` per node visited), where v3 skipped them with an `if`. Under LeetCode's 2-dot limit that's noise. In a hot loop you might keep the caller-side check as a fast path. It's a readability-vs-call-overhead choice, not a correctness one.
+
+* **Other polish:**
+    * Renaming the helper parameter from `root` to `searchNode` (v2) fixed the shadowing of the member `root`. 👍
     * `addWord` is `[1]`'s `insert` copied verbatim. If both lived in one codebase, they'd share one trie class.
+    * The helper is still called `findNode`, but it no longer finds a node. Something like `matches` / `searchFrom` would now describe it honestly.
 
 * **Time & Space Complexity:** `addWord`: $O(L)$ time. `search`: $O(L)$ for letter-only patterns; with dots, $O(\min(26^d \cdot L,\ \text{total nodes}))$ worst case for d dots, i.e. $O(26^2 \cdot L)$ under LeetCode's 2-dot limit. Space: $O(L)$ recursion depth for `search` (≤ 25 frames), plus the trie's $O(\text{total characters})$ nodes at 216 bytes each.
