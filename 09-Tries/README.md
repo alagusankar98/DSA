@@ -193,3 +193,66 @@ Load the dictionary into a trie, then run a *different* search (grid DFS / backt
     * The helper is still called `findNode`, but it no longer finds a node. Something like `matches` / `searchFrom` would now describe it honestly.
 
 * **Time & Space Complexity:** `addWord`: $O(L)$ time. `search`: $O(L)$ for letter-only patterns; with dots, $O(\min(26^d \cdot L,\ \text{total nodes}))$ worst case for d dots, i.e. $O(26^2 \cdot L)$ under LeetCode's 2-dot limit. Space: $O(L)$ recursion depth for `search` (≤ 25 frames), plus the trie's $O(\text{total characters})$ nodes at 216 bytes each.
+
+### [3] Word Search II
+
+> The Hard that closes out Tries: Backtracking `[1]` Word Search, but for a whole **list** of words at once. I solved Word Search I first on purpose, and it paid off: the grid DFS (scanner, guard clauses at the top, mark/unmark) carried over almost unchanged. What took a long time was merging two traversals in my head, then three real bugs, then understanding pruning. First pass (no pruning) is committed in `26ef668`; the second version adds pruning and frees the pruned nodes.
+
+* **The Core Pattern:** Trie as a pruning index for another search (§2 Pattern 3). **Put the *words* into a trie, then run Word Search I's DFS from every cell, carrying a trie node along.** One DFS checks the board against *every* word at the same time, and the trie says the moment the current path stops being a prefix of any word.
+
+* **Why my first two ideas don't work:**
+    * **Run Word Search I once per word.** Correct, but every word restarts the full grid search: `words × m·n·4·3^(L−1)`. LeetCode allows up to 3×10⁴ words on a 12×12 board, so it's far too slow. Words that share a prefix (`oath`, `oats`) also redo the same walk over and over, which is exactly the work a trie shares.
+    * **Turn the board into a trie, then look up each word.** The trie would need every path that can be walked on the board, and the number of paths grows ×3 per step (§1 of Backtracking). That's exponential memory before searching anything. **Flip it: the words are the small, fixed set, so they go in the trie, and the board is what you search.**
+
+* **"My brain is splitting: I'm traversing two things." How they sync up: the board drives, and the trie is the map.**
+    * At cell `(i, j)` you're holding the trie node for the letters walked so far. **The board decides the next letter:** look at `board[i][j]`, and check exactly **one** slot, `node->next[board[i][j] - 'a']`.
+    * Slot is `nullptr` → no word continues this way, so return. That one check is the pruning.
+    * Slot exists → step into the cell and into that child **together**, then fire the 4 neighbour calls carrying the *child*.
+    * **You never loop over the 26 children.** That was `[2]`'s `.` wildcard, where the *query* was fixed and the trie branched. Here it's reversed: the **board** branches (4 neighbours), and the trie answers one yes/no per step: "is this still a prefix?"
+    * So `(cell, trie node)` advance in lockstep: one step on the board = one level down the trie.
+
+* **Collecting the words: build the string top-down, not bottom-up.** My worry was "when I find a match, do I rebuild the string from the bottom up?" My idea was an `isMatch` flag on nodes plus a second pass over the trie at the end. It works, but it's an extra traversal. Two standard answers:
+    * **Carry the path as a `std::string&`:** `push_back` the letter when stepping in, `pop_back` when leaving. It's the same choose / un-choose pair as `seen`. When a node has `isDone`, the string already spells the word, so copy it into the results. **I used this one.**
+    * **Store the word in the node** (`std::string word` instead of `bool isDone`). No string-building at all, but every node carries a `std::string` member, used or not, which makes 216-byte nodes even bigger.
+    * **De-duplicate by clearing `isDone` when the word is found.** The same word can be spelled along two different board paths. Unlike `seen`, this mark is **permanent** (never restored): once found, the word is done for the whole search.
+    * **Don't stop when a word is found.** `app` and `apple` share a path, so the DFS keeps going below a found word.
+
+* **The three bugs, and what each one teaches:**
+    * **DFS started only from `{0, 0}`.** I forgot Word Search I's scanner: a word can start at *any* cell, so `findWords` needs the nested loop over every cell. `stringSoFar` doesn't need clearing between starts: every `push_back` is matched by a `pop_back`, so it's empty again whenever control is back in the loop.
+    * **`seen` passed by value.** A missing `&` means each call gets a **full copy** of the grid: an allocation per row on every step, and marks that never reach the other calls. It's the same trap as Trees `[13]` copying the map on every call. Rule: **shared mutable state goes by `&`.**
+    * **`insert` used `root` instead of `current`.** `root->next[c]` inside the loop meant every letter was hung directly off the root, and only the *last* letter's node was marked as a word end. `"oath"` became four depth-1 nodes, with the `h` node marked, so any `h` on the board was reported as the word `"h"`. It was a **wrong answer, not a timeout.** Two lessons:
+        * **`insert` was retyped from `[1]`, not reused, and that's where the bug got in.** Test a reused piece on its own (insert a word, walk it back) before building on it.
+        * **The other LLM was asked to check only compile errors, then called the broken version a "masterpiece" and blamed a TLE.** That diagnosis was a guess, and the bug was in code it had praised. Praise isn't a test.
+        * **Term check:** the LLM called this "pointer shadowing". It isn't. **Shadowing** is when an inner declaration with the *same name* hides an outer one, like `[2]`'s helper parameter named `root` hiding the member `root`. This was just the wrong variable: a cursor that was declared but never used.
+
+* **Pruning, "burning the bridge" (the part that broke my brain):**
+    * **The problem:** after `"bat"` is found and its `isDone` cleared, the nodes `b → a → t` are still in the trie. Every later `b` on the board walks `b → a → t` again, does all the bounds and `seen` work, and finds nothing. The trie still *looks* like it holds a word there.
+    * **The fix:** after a cell's 4 recursive calls return, check whether the child node is now **dead**: no children and not a word end. If so, the parent cuts it off (`root->next[charIdx] = nullptr`). This runs **on the way back up**, so it chains: cut `t`, and now `a` has no children, so cut `a`, then `b`. The whole word disappears from the trie, and the next `b` on the board dies on its first lookup.
+    * **My question: "Why not just stop recursing when the node has no children?"** That saves the 4 neighbour calls on *this* path only. The dead nodes stay in the trie, so **every future start cell** walks them again. Pruning changes the trie itself, so the savings apply to every later search, not just this one.
+    * **My first pruning attempt had two bugs:**
+        * **The empty-check loop set `isEndTree = false` unconditionally.** `nextNode->next` is a `std::array<TrieNode*, 26>`: it **always has 26 elements**, `nullptr` or not, so the loop body runs on element 0 every time. The flag must depend on `if (node)`.
+        * **`nextNode = nullptr` only cleared a local copy.** `nextNode` holds a copy of the address. Setting the copy to null leaves the parent's slot still pointing at the node. **The pointer that must change is the one *stored in the parent*, `root->next[charIdx]`.** Same idea as passing a pointer by value: you can change what it points *at*, but not the caller's pointer itself.
+    * **The other LLM's "Trap 3" can't happen.** It said a childless node might be an unfound word, so you also need `!nextNode->isDone`. But a node with no children is always the **last letter of an inserted word**, and `insert` marks it. The only way it's childless *and* `isDone == false` is that the word was already found. In my code, `isDone` is also cleared before the check. **My `isEndTree` test is sufficient.** Adding `!isDone` is harmless, but it isn't fixing anything.
+    * **The leak: cutting the link isn't freeing the node.** Once the parent's slot is null, the destructor's walk from `root` can never reach that node again, so it's leaked. **Measured with AddressSanitizer on the LeetCode example:** 1512 bytes leaked in 7 allocations = 7 × 216-byte nodes, which is exactly `oath` (4) + `eat` (3), the two words found and pruned. Fixed by `delete nextNode;` before nulling the slot; then no leak is reported. **Why `delete` is safe right there:** the node is a leaf, its own recursive calls have already returned, and every other active frame holds a node at a *different* trie depth (its ancestors). Nothing else can be using it.
+    * **What pruning buys (measured, 12×12 board of all `'a'`, `-O2`, this machine):**
+
+        | Words | No pruning (`26ef668`) | Pruning |
+        | -- | -- | -- |
+        | `a` … `aaaaaaaaaa` (10 findable) | 45 ms | ~0 ms |
+        | + `aaaaaaaaab` … `aaaaaaaaaz` (25 that can never be found) | 35 ms | 14 ms |
+
+        * Findable only: the first snake path finds all 10 words and the trie empties completely, so the other 143 start cells die on the first lookup.
+        * **Pruning only removes *found* words.** A word that's never found keeps its whole path alive, so the 9-`a` chain under the unfindable words is walked again from every cell. That's why the second row is still 14 ms.
+        * The other LLM said the unpruned version passed LeetCode "because C++ is so fast". I can't check LeetCode's tests, but 45 ms on this worst-shape board makes it plausible.
+
+* **Interviewer review (my final code):**
+    * **Kept from earlier problems:** deleted copy operations (Rule of Three, `[1]`), the iterative `std::stack` destructor, the `coordinates` alias inside the class (Word Search I), and `seen` / `stringSoFar` by `&`.
+    * **Fixed in the second version:** the deleted assignment operator returns `PrefixTrie&` (convention; the compiler accepts either since it's deleted), and `TrieNode*&` became `TrieNode*`. A reference-to-pointer is only needed to **reassign the caller's pointer**, and the helper never does: it changes nodes *through* the pointer.
+    * **`if (!root) return;` is now unreachable.** Every caller passes a non-null node: `findWords` passes the root, and the recursion only passes `nextNode` after checking it. It's harmless as a guard; just know it isn't doing work.
+    * **The other LLM's "zero heap allocations" claim is slightly off:** each found word is copied into `resultVector` (one allocation per result), and `stringSoFar` grows once, to at most 10 characters. During the search itself, though, it's true.
+    * **Verified:** both versions match a brute-force (Word Search I per word) checker on 20,000 random small boards (no mismatches, no duplicates).
+
+* **Time & Space Complexity:** with board `m × n`, word length ≤ `L` (10 on LeetCode), `W` total characters across all words:
+    * **Build:** O(W).
+    * **Search:** O(m · n · 4 · 3^(L−1)). This is Word Search I's bound, but paid **once for all words** instead of once per word, because the trie caps the depth at L and kills dead paths immediately. Pruning doesn't change the worst case (unfindable words), only the typical one.
+    * **Space:** the trie's O(W) nodes at 216 bytes each (shrinks as words are found), O(m · n) for `seen`, and O(L) recursion depth plus `stringSoFar`.

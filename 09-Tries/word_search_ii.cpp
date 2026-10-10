@@ -23,7 +23,7 @@ class PrefixTrie {
         
         // Delete copy and assignment operator
         PrefixTrie(const PrefixTrie&) = delete;
-        PrefixTrie operator=(const PrefixTrie&) = delete;
+        PrefixTrie& operator=(const PrefixTrie&) = delete;
 
         ~PrefixTrie(){
             std::stack<TrieNode*> trieStack;
@@ -44,7 +44,7 @@ class PrefixTrie {
 class Solution {
 private:
     using coordinates = std::pair<int, int>;
-    void checkBoardForWords(const std::vector<std::vector<char>>& board, TrieNode*& root, std::vector<std::vector<bool>>& seen, const coordinates current, std::vector<std::string>& resultVector, std::string& stringSoFar){
+    void checkBoardForWords(const std::vector<std::vector<char>>& board, TrieNode* root, std::vector<std::vector<bool>>& seen, const coordinates current, std::vector<std::string>& resultVector, std::string& stringSoFar){
         if(!root) return; // Check what to do
 
         auto& [i, j] = current;
@@ -70,6 +70,21 @@ private:
         checkBoardForWords(board, nextNode, seen, {i+1, j}, resultVector, stringSoFar);
         checkBoardForWords(board, nextNode, seen, {i, j-1}, resultVector, stringSoFar);
         checkBoardForWords(board, nextNode, seen, {i, j+1}, resultVector, stringSoFar);
+        
+        // Check if this is the end of tree before recursive calls
+        bool isEndTree = true;
+        for(auto& node : nextNode->next){
+            if(node){
+                isEndTree = false; 
+                break; // Atleast one node exists further in this path
+            }
+        }
+
+        if(isEndTree){
+            delete nextNode;
+            root->next[charIdx] = nullptr;
+        }
+        
 
         stringSoFar.pop_back();
         seen[i][j] = false;
