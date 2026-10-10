@@ -1,6 +1,7 @@
-using coordinates = std::pair<int, int>;
+
 class Solution {
 private:
+    using coordinates = std::pair<int, int>;
     bool searchWord(const std::vector<std::vector<char>>& board, std::string_view word, size_t searchIdx, std::vector<std::vector<bool>>& seen, coordinates currentCoordinate){
         if(searchIdx >= word.size()) return true;
 
