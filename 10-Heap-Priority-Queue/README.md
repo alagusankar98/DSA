@@ -96,6 +96,21 @@ It's a thin wrapper (a **container adaptor**) over a `std::vector` that calls th
 * **No `reserve()`.** The adaptor hides it. To pre-allocate, reserve a vector yourself and **move it in**: `std::priority_queue<int> pq(std::less<int>{}, std::move(buf));`. The same constructor with a filled vector **heapifies in O(N)**.
 * **The raw algorithms** (`<algorithm>`): `std::make_heap`, `std::push_heap` (call *after* `push_back`), `std::pop_heap` (moves the top to the *back*, then you `pop_back`). Use these when you need the underlying vector itself, e.g. to iterate over it or keep it as a class member you control.
 
+### ⭐ My Heap Cheat Sheet (the click from K Closest Points, in my own words)
+After three problems of mixing up min and max, this is the summary that finally made it stick. **Reread this first.**
+
+**Which heap for top-K:**
+* **K largest elements:** a **min-heap of size K** (the smallest of the big ones sits at the door, ready to be kicked out when someone bigger arrives), **or** dump everything into a **max-heap** and pop K times.
+* **K smallest elements:** a **max-heap of size K** (the biggest of the small ones sits at the door), **or** dump everything into a **min-heap** and pop K times.
+* The size-K version is the one to use: O(N log K) time, **O(K)** memory, and it works on a stream. Dump-and-pop costs O(N + K log N) time and **O(N)** memory (the heap holds a copy of everything).
+
+**What the comparator means:**
+* **`std::less` is `data_1 < data_2` → max-heap.** What it really asks: *"should `data_1` be placed **below** `data_2`?"* Smaller ones sink, so the **largest** stays on top.
+* **`std::greater` is `data_1 > data_2` → min-heap.** Same question, *"should `data_1` be placed below `data_2`?"*, but now larger ones sink, so the **smallest** stays on top.
+* The same applies to a custom lambda: whatever operator it uses on the key, read it as "**who sinks**". `<` → max-heap, `>` → min-heap. (`std::sort` reads the same comparator as "who comes **first**", which is why the two feel opposite.)
+
+**A self-check that works on any code:** look at the eviction condition. `if (new < top()) { pop(); push(new); }` only makes sense if `top()` is the **largest** in the heap (you can't be smaller than the minimum and still have something to evict), so it's a max-heap, whatever the variable is called.
+
 ### The Hardware Reality
 * **One contiguous array, zero pointers, zero per-element allocations.** That's the heap's big advantage over a BST (`std::set` allocates a node, with 3 pointers and a colour bit, for every element). After the vector stops growing, `push` / `pop` never call `malloc`.
 * **But sift-down jumps.** Going from `i` to `2i+1` doubles the index. The top few levels share a few cache lines and stay hot, but deeper levels land on a new cache line every step. On huge heaps, the cost of `pop` is dominated by cache misses, not comparisons. That's why some high-performance systems use **4-ary heaps** (children at `4i+1 … 4i+4`): half the height, and the 4 children usually sit in one cache line.
@@ -240,3 +255,35 @@ Heaps can't remove arbitrary elements. Instead, record that X is dead (in a hash
 * **Time & Space Complexity:**
     * **Time O(N log N):** O(N) to heapify, then at most N − 1 rounds (each round removes at least one stone), each with 2 pops and ≤ 1 push at O(log N).
     * **Space O(N):** the heap holds a copy of `stones` (the input is `const&`, so it can't be heapified in place; with a mutable vector, `std::make_heap` on the input itself would need O(1) extra).
+
+### [3] K Closest Points to Origin
+
+> The problem where min-vs-max finally clicked, and where I wrote my first lambda comparator. First pass `64180e1` (min-heap of all N points, pop K); optimal `cb3d81c` (max-heap capped at K, the bouncer). The click is written up at the top of the guide: **§1, "My Heap Cheat Sheet"**.
+
+* **The Core Pattern:** top-K with the **opposite** heap (§2 Pattern 1). "Closest" means the **K smallest** distances, so keep a **max-heap of size K** keyed on squared distance `x² + y²`. Its `top()` is the **farthest** point still inside, the bouncer. For each point: club not full → push; closer than the bouncer → pop the bouncer, push the point; otherwise reject without touching the heap. At the end, the heap holds exactly the K closest. Order doesn't matter, so draining it straight into the result is fine.
+    * **Squared distance, no `sqrt`:** `√` only increases with its input, so comparing `x² + y²` gives the same order as comparing the true distances. It's also exact integer math with no float rounding, and it avoids a slow `sqrt` per comparison.
+
+* **My first approach (`64180e1`), and why it isn't the answer:** a min-heap built from **all** points with the iterator constructor (O(N) heapify), then pop K times. **Correct** (verified), and the smallest distance really is at the top. But the heap is a full copy of the input: **O(N) memory** to answer a question about K points. With 10⁷ points and K = 5, that's 10⁷ `vector<int>` copies just to read five.
+
+* **The wall: "is this a min-heap or a max-heap?"** I wrote the optimal version, named it `minHeap`, and couldn't tell which one it was. It was a **max-heap** (comparator `<`), and a max-heap is what the problem needs. Two ways to see it without guessing:
+    * **Read the eviction condition:** `if (dist(point) < dist(top())) { pop(); push(point); }`, i.e. "if the new point is closer than the top, kick the top out". That only makes sense if the top is the **farthest** point inside. So `top()` = max → max-heap.
+    * **Read the comparator as "who sinks":** `dist(p1) < dist(p2)` returns true when `p1` is closer, so `p1` goes **below** `p2`. Closer points sink, the farthest floats up → max-heap.
+    * **Then I flipped the question myself: "can't I use a min-heap of size K?"** No. With `{10, 20, 50}` in a min-heap, `top()` = 10. A new point at 15 belongs in the top 3 (it should replace 50), but 50 is buried at the bottom and a heap can only touch its top (§1 Complexity Summary: finding anything else is O(N)). **A min-heap can't see the element you need to evict.** It only works with no size cap, which is exactly my first pass.
+    * The rule in one line: **the top of the heap must be the element you'd evict next.** For K smallest, that's the largest of them → max-heap.
+
+* **The Struggle & Insights:**
+    * **First lambda: `'this' cannot be implicitly captured`.** `calculateDistance` is a member function, so calling it from inside the class really means `this->calculateDistance(...)`. A lambda is its own anonymous class with an `operator()`. It can't see the enclosing object unless you hand it `this`, which is what `[this]` does (it copies the pointer into the lambda object). Better, now that I know: `calculateDistance` doesn't use any member data, so make it `static` (or a free function). Then the lambda captures nothing, `[]` works, and it's a plain function with no hidden pointer.
+    * **The template typo: `priority_queue<int, vector<vector<int>>, …>`.** The first template argument is the **element type**, and it has to match what the container holds and what the comparator takes: `vector<int>`, not `int`. Also missing: the `>` closing the template list before the variable name. The error ("unknown type name `minHeap`") pointed past the real mistake, as template errors usually do.
+    * **The SEGV at address `0x8`: an empty heap and a backwards `assert` again.** One draft never pushed anything into the heap and then called `top()` K times. `top()` on an empty `priority_queue` is **undefined behaviour**: it reads element 0 of an empty vector, whose data pointer is null, so AddressSanitizer saw a read near the zero page while copying "the vector at `nullptr`". The `assert(minHeap.empty() && …)` should have caught it, but it was backwards (the same bug as `[1]`): it asserted the heap *was* empty, so it passed. **`assert` states what must be true: `!empty()`.**
+    * **Capturing lambdas must be passed to the constructor.** `decltype(compare_coordinates)` names the lambda's type, and `minHeap(points.begin(), points.end(), compare_coordinates)` passes the object. Because this lambda captures `this`, it can't be default-constructed, even in C++20 (`[2]`'s Q&A). With a `static` helper and `[]`, C++20 would let you skip it.
+    * **`long long` return type, but the math is still `int`.** `point[0] * point[0] + point[1] * point[1]` is computed in `int`, and only the **result** is widened to `long long`. If the multiply overflowed, the UB would already have happened. To actually get 64-bit math, widen an operand: `1LL * point[0] * point[0]`. Here it doesn't matter: coordinates are within ±10⁴, so the max is 2·10⁸, well inside `int`.
+    * **Stale comments.** The optimal file still says `// We need a min heap` and `// Push elements to min heap` above max-heap code. That's the exact confusion this problem was about, and comments like that are what would cause it again on a reread.
+
+* **Beyond the textbook:**
+    * **Every push copies a `vector<int>`, and every copy is a `malloc`.** A `vector<int>` is a pointer + size + capacity on the stack, with its two ints in a separate heap allocation. `push(point)` deep-copies it, and `push_back(top())` copies it again (`top()` is `const&`). Sifting is cheap (swapping vectors only swaps the three words), but the allocations aren't. The standard fix: store `pair<int, int>` = **(squared distance, index into `points`)**. It needs no allocations, compares lexicographically so the default `std::less` is already the max-heap you want (§1: pairs order by `.first`), and each distance is computed **once** instead of on every comparison. Copy the K winning points out at the end.
+    * **Quickselect, `std::nth_element`:** partially sorts the range so the K closest end up in the first K slots (in no particular order), **O(N) average**. The other LLM called it O(1) space, but `points` is `const&` here, so you need a copy first, which is O(N) memory. It's the faster choice when the whole array is in memory, and the size-K heap is the one that works on a stream.
+    * **Measured** (N = 10⁶ random points, `-O2`): first pass 76 ms (k = 10) / 82 ms (k = 1000); size-K max-heap **2.2 ms / 3.6 ms**. Both versions match a sort-based brute force on 20,000 random inputs. `-Wall -Wextra` flags `maxHeap.size() < k` (`-Wsign-compare`, `size_t` vs `int`), the same as `[1]`.
+
+* **Time & Space Complexity:**
+    * **First pass (min-heap of all):** O(N) heapify + O(K log N) pops; **O(N) space**.
+    * **Optimal (max-heap of size K):** O(N log K) worst case, and **O(1)** for each rejected point; **O(K) space** for the heap (plus the O(K) output).
