@@ -7,14 +7,23 @@ std::vector<std::vector<int>> kClosest(const std::vector<std::vector<int>>& poin
     
     auto compare_coordinates = [this] (const std::vector<int>& point1, const std::vector<int>& point2) {
         // We need a min heap
-        return calculateDistance(point1) > calculateDistance(point2);
+        return calculateDistance(point1) < calculateDistance(point2);
     };
     
-    std::priority_queue<std::vector<int>, std::vector<std::vector<int>>, decltype(compare_coordinates)> minHeap(points.begin(), points.end(), compare_coordinates);
+    std::priority_queue<std::vector<int>, std::vector<std::vector<int>>, decltype(compare_coordinates)> maxHeap(compare_coordinates);
 
-    for(int i = 0; i < k; i++){
-        assert(!minHeap.empty() && "Not enough k-elements in heap");
-        resultVector.push_back(minHeap.top()); minHeap.pop();
+    // Push elements to min heap
+    for(const auto& point : points){
+        if(maxHeap.size() < k){
+            maxHeap.push(point);
+        } else if(calculateDistance(point) < calculateDistance(maxHeap.top())){
+            maxHeap.pop();
+            maxHeap.push(point);
+        }
+    }
+
+    while(!maxHeap.empty()){
+        resultVector.push_back(maxHeap.top()); maxHeap.pop();
     }
 
     return resultVector;
