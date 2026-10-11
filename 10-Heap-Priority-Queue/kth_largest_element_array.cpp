@@ -1,8 +1,10 @@
 int findKthLargest(const std::vector<int>& nums, int k) {
     std::priority_queue<int, std::vector<int>, std::greater<int>> minHeap;
 
+    assert(!nums.empty() || k == 0);
+
     for(const int num : nums){
-        if(minHeap.size() < k){
+        if(std::ssize(minHeap) < k){
             minHeap.push(num);
         } else if(num > minHeap.top()){
             minHeap.pop();
@@ -10,5 +12,5 @@ int findKthLargest(const std::vector<int>& nums, int k) {
         }
     }
 
-    return minHeap.empty() ? std::numeric_limits<int>::min() : minHeap.top();
+    return minHeap.top();
 }

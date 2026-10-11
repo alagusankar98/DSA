@@ -287,3 +287,45 @@ Heaps can't remove arbitrary elements. Instead, record that X is dead (in a hash
 * **Time & Space Complexity:**
     * **First pass (min-heap of all):** O(N) heapify + O(K log N) pops; **O(N) space**.
     * **Optimal (max-heap of size K):** O(N log K) worst case, and **O(1)** for each rejected point; **O(K) space** for the heap (plus the O(K) output).
+
+### [4] Kth Largest Element in an Array
+
+> The first heap problem I solved straight from the cheat sheet in §1, with no confusion about min vs max. First pass `d420017`. It's the same bouncer loop as `[1]`'s `add`; the difference is that **the whole array is available up front**, which unlocks options a stream never has (see "Should I optimize further?").
+
+* **The Core Pattern:** top-K with the opposite heap (§2 Pattern 1). K **largest** → **min-heap of size K**. Its `top()` is the weakest of the K largest seen so far, which is exactly the K-th largest. Club not full → push; bigger than the bouncer → pop, push; otherwise reject in O(1). After the loop, the answer is `top()`.
+
+* **What I got right on the first pass:** chose the min-heap (`std::greater<int>`) straight from "K largest → min-heap", capped the size at K, and checked the bouncer **before** pushing (the `[1]` lesson), so rejected values never touch the heap.
+
+* **Corrections to the other LLM's review:**
+    * **"Memory reallocation prevented" by popping before pushing:** not really. The heap is at size K before *and* after every swap, and `[1]`'s measurement showed a vector reallocates only while it first fills, never once it's at steady size. Pop-then-push matters for skipping work on rejects, not for memory.
+    * **"Returning `INT_MIN` on an empty heap is great defensive programming":** it's debatable. The constraints guarantee `1 ≤ k ≤ n`, so the heap can't be empty, and if the contract were broken, `INT_MIN` looks like a real answer and the caller can't tell. A sentinel is only safe when it can never be a valid result. Here an `assert(!minHeap.empty())` states the precondition more honestly. (Values are within ±10⁴, so `INT_MIN` happens to be unambiguous in practice. That's luck, not design.)
+    * **"Strict O(N)" for Quickselect:** wrong. Quickselect is O(N) **on average**, but O(N²) in the worst case. `std::nth_element` in libstdc++ is **introselect**: quickselect that falls back to a heap-based method when partitions go badly, giving an O(N log N) worst case. It's also not free here: `nums` is `const&`, so you have to copy it (O(N) memory) before shuffling it.
+    * **The `-Wsign-compare` warning is back** (`minHeap.size() < k`, `size_t` vs `int`), the same as `[1]` and `[3]`.
+
+* **Should I optimize further? Measured** (random values in ±10⁴, `-O2`, avg of 20 runs; all five methods verified against `sort` on 20,000 random inputs):
+
+    | N | k | my heap | heap, smaller side | heapify all + pop | `nth_element` (copy) | counting |
+    | -- | -- | -- | -- | -- | -- | -- |
+    | 10⁵ | 1 | 0.05 ms | 0.06 | 0.59 | 0.55 | 0.06 |
+    | 10⁵ | 50,000 | 2.95 ms | 2.97 | 4.00 | **0.54** | **0.06** |
+    | 10⁵ | 100,000 | 1.29 ms | **0.05** | 7.05 | 0.31 | 0.06 |
+    | 10⁶ | 10 | 0.52 ms | 0.52 | 6.21 | 5.43 | 0.57 |
+    | 10⁶ | 500,000 | 37.7 ms | 37.7 | 50.8 | **6.98** | **0.57** |
+
+    * **Small k (the usual "top 10" case): my heap is already as fast as anything,** because almost every value is rejected in one comparison. Nothing to gain there.
+    * **k near N/2 is the heap's worst case:** O(N log K) with K ≈ N/2, and many values get accepted. Quickselect wins by ~5×.
+    * **"Smaller side" trick (a free win for k close to N):** the k-th largest is also the **(N − k + 1)-th smallest**. When `k > N/2`, keep a **max**-heap of size `N − k + 1` instead. The cost becomes O(N log min(k, N − k)). At k = N: 1.29 ms → 0.05 ms.
+    * **Counting (exploits the constraint):** values are bounded to ±10⁴, so keep a count array of 20,001 buckets, tally every value, and walk down from the top subtracting counts until k is used up. O(N + R) with R = 20,001, flat ~0.06 ms at N = 10⁵ whatever k is. The count array is 80 KB, which fits in L2 cache, and the pass over `nums` is purely sequential. It only works because the value range is small. With full 32-bit ints it's useless, which is why it's a "read the constraints" trick, not the general answer.
+    * **Verdict:** for an interview, the heap is the answer to write and defend: O(N log K), O(K) memory, and it also works on a stream. The follow-up to **prepare for** is "can you do it in O(N) average?", and interviewers usually want you to **explain or hand-write Quickselect**, not just call `nth_element`. Hand-writing it is the worthwhile next pass.
+
+* **Quickselect from scratch (for the follow-up):**
+    * **The idea:** it's quicksort's partition step, but you only recurse into **one** side. Pick a pivot and partition so that everything smaller is on the left and everything larger on the right. The pivot is now at its final sorted index `p`. The answer lives at index `N − k` (ascending order). If `p == N − k`, done. If `p < N − k`, repeat only on the right part; otherwise only on the left. Throw the other side away.
+    * **Why O(N) on average:** a reasonable pivot halves the range each time, so the total work is `N + N/2 + N/4 + … ≈ 2N`. Quicksort is O(N log N) because it has to recurse into **both** sides.
+    * **Why O(N²) in the worst case:** if the pivot is always the min or max (e.g. "always pick the last element" on sorted input), each step removes just one element: `N + (N−1) + …`. A **random pivot** makes that extremely unlikely.
+    * **The duplicates trap:** with a plain 2-way partition, an array of all-equal values degenerates to O(N²) even with random pivots, because every element lands on the same side. A **3-way partition** (`< pivot | == pivot | > pivot`) fixes it: if `N − k` falls inside the `==` block, that's the answer. LeetCode 215 is known for tests that punish naive quickselect this way.
+    * **Heap vs Quickselect, in one line:** the heap reads each value once and keeps K of them (streams, small K, O(K) memory). Quickselect needs the whole array in memory and rearranges it (array only, O(N) average, O(1) extra if you're allowed to modify the input).
+
+* **Time & Space Complexity:**
+    * **Heap (current):** O(N log K) time, O(K) space; O(N log min(K, N − K)) with the smaller-side trick.
+    * **Quickselect:** O(N) average, O(N²) worst (O(N log N) worst for introselect); O(1) extra in-place, O(N) here because of the copy.
+    * **Counting:** O(N + R) time, O(R) space, R = value range.
