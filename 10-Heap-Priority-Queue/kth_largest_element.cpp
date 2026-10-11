@@ -3,11 +3,8 @@ private:
     std::priority_queue<int, std::vector<int>, std::greater<int>> minHeap_;
     size_t k_;
 public:
-    KthLargest(int k, vector<int>& nums) {
-        k_ = k;
-        for(const int num : nums){
-            add(num);
-        }
+    KthLargest(int k, const std::vector<int>& nums) : minHeap_(nums.begin(), nums.end()), k_(k){
+        while(minHeap_.size() > k) minHeap_.pop();
     }
     
     int add(int val) {

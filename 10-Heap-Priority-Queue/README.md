@@ -157,7 +157,7 @@ Heaps can't remove arbitrary elements. Instead, record that X is dead (in a hash
 
 ### [1] Kth Largest Element in a Stream
 
-> First heap problem, and it took a while, not for the code but for the *why*: "I want the k-th **largest**, so why a **min**-heap?" Three versions: `756431b` (push everything, trim on `add`), `c7c3426` (constructor reuses `add`), and the current file, which checks before pushing (the "bouncer").
+> First heap problem, and it took a while, not for the code but for the *why*: "I want the k-th **largest**, so why a **min**-heap?" Four versions: `756431b` (push everything, trim on `add`), `c7c3426` (constructor reuses `add`), `8d9c070` (checks before pushing, the "bouncer"), and the current file, which builds the heap with the iterator constructor in the initializer list (see the last Q&A below: measured, that change is a step *back* for small k).
 
 * **The Core Pattern:** Top-K with a size-K heap of the **opposite** kind (§2 Pattern 1). Keep only the **k largest values seen so far**, in a **min-heap**. Its `top()` is the smallest of those k, and that's exactly the k-th largest overall. Each `add` either lets the new value in (evicting the current smallest) or rejects it. The answer is always `top()`.
 
@@ -190,7 +190,53 @@ Heaps can't remove arbitrary elements. Instead, record that X is dead (in a hash
     * **`size() < k_` compares `size_t` with `int`**, and `-Wall -Wextra` flags it (`-Wsign-compare`, verified). It's safe here since `k ≥ 1`, but storing `k_` as `size_t` would make it clean.
     * **Initializing the heap from the vector in the initializer list** (`minHeap_(nums.begin(), nums.end(), std::greater<int>())`, from the transcript) heapifies all N in O(N), then you pop down to k. Note that members are initialized in **declaration order**, not the order written in the list. The transcript listed `k_` first while `minHeap_` is declared first, which gets a `-Wreorder` warning. Harmless here (neither reads the other), but it's a real bug when one member's initializer uses another.
 
+* **Q&A (follow-up from Last Stone Weight): "build the heap in O(N) in the initializer list" — measured, it's slower here.** The other LLM suggested replacing the `add` loop with `minHeap_(nums.begin(), nums.end())` in the initializer list (heapify in O(N)), then `while (size() > k) pop();`. **The answer to my earlier "couldn't call the constructor because it's a class member" is the initializer list:** members are constructed there, before the body runs, so any member constructor can be called. But here it doesn't pay:
+    * **Heapify is O(N), but the trim isn't.** Getting from N elements down to k is **(N − k) pops at O(log N) each**. The `add` loop never holds more than k elements, and with the bouncer most values are rejected in O(1).
+    * **Measured in review** (N = 10⁶ random values, `-O2`, this machine):
+
+        | k | `add` loop (`8d9c070`) | heapify + trim (current) |
+        | -- | -- | -- |
+        | 10 | 0.6 ms | 105 ms |
+        | 1000 | 1.0 ms | 102 ms |
+        | 500,000 | 39 ms | 53 ms |
+        | 999,990 | 11 ms | 6.7 ms |
+
+    * **Rule:** heapify + trim wins only when k is close to N, i.e. few pops. For the usual top-k case (k ≪ N) the size-k loop is far better, and it also uses O(k) memory instead of O(N). LeetCode 703's limits (≤ 10⁴ numbers) are too small to notice either way, but in an interview, the `add` loop is the one to defend.
+    * **The LLM's "saves a double allocation" reason is also off:** an empty `vector` doesn't allocate at all. The real allocation difference is that the iterator constructor sizes its buffer once, while repeated pushes grow it geometrically (a handful of reallocations).
+    * **Two warnings in the current constructor (`-Wall -Wextra`, verified):**
+        * **`-Wreorder`:** the list says `k_(k), minHeap_(…)`, but `minHeap_` is **declared** first, so it is constructed first anyway. Harmless here; write the list in declaration order so it reads the way it runs.
+        * **`-Wsign-compare`:** `while (minHeap_.size() > k)` compares against the `int` parameter. Use `k_` (already `size_t`).
+    * Kept from this change: `const std::vector<int>&` (the constructor only reads `nums`) and `size_t k_` (silences the earlier `size() < k_` warning).
+
 * **Time & Space Complexity:**
-    * **Constructor:** O(N log k) by feeding each value through `add`.
+    * **Constructor:** O(N log k) by feeding each value through `add` (heapify + trim: O(N + (N − k) log N), see the table above).
     * **`add`:** O(log k) when the value gets in; **O(1)** when the bouncer rejects it.
     * **Space:** O(k). The heap never holds more than k values, however long the stream.
+
+### [2] Last Stone Weight
+
+> A direct heap simulation. Quick to code; the learning was all in the follow-up questions: why building from the vector is O(N), whether to stop pushing in loops, and how the constructor arguments work. First pass `1bc465e`; the current file is the cleaned-up version.
+
+* **The Core Pattern:** Repeated "take the best, put something back" (§2 Pattern 2). Every round needs the **two heaviest** stones, and the result (if any) goes back into the pile. A **max-heap** gives the heaviest in O(1) and removal in O(log N), so each round is two pops plus at most one push. Stop when at most one stone is left: return its weight, or `0` if the heap is empty.
+
+* **What I got right on the first pass:**
+    * **Built the heap from the vector in one go** instead of a push loop (O(N) heapify, see the Q&A).
+    * **`while (size() > 1)`** guarantees there are two stones before two `pop`s, so there's never a `top()` on an empty heap.
+    * **The `empty() ? 0 : top()` return** covers the case where the last two stones destroy each other.
+
+* **The Struggle & Insights:**
+    * **`std::abs` was unnecessary.** `first` is popped before `second` from a max-heap, so `first ≥ second` is guaranteed and `first - second` is never negative. Using `abs` there isn't wrong, but it hides an invariant you should be able to state: **the order you pop from a heap *is* sorted order.**
+    * **Q&A: how does building from the vector make it O(N) instead of O(N log N)?** A push loop inserts each value at the bottom and sifts it **up**. Late arrivals land at the bottom of a tall tree, so the total is O(N log N). Heapify (`std::make_heap`, which the vector and iterator constructors call; also known as Floyd's algorithm) puts all N values in the array first, then sifts **down** each non-leaf node, from the last one back to the root. Half the nodes are leaves and don't move, a quarter move at most 1 level, an eighth at most 2… The total work sums to less than N. **Most nodes live near the bottom, and the bottom ones barely move.** (Detail in §1, "Building a heap from N elements".)
+    * **Q&A: "Should I avoid inserting into a heap with a for loop?"** Only when **all the data is available up front.** Then heapify (O(N)) beats N pushes (O(N log N)). When values arrive **one at a time** (a stream, like `add` in `[1]`), `push` is the only option, and that's fine. And O(N) heapify isn't automatically the faster *overall* plan. In `[1]`, heapify followed by trimming to k was measured up to ~170× slower than a size-k push loop (see `[1]`'s last Q&A). **Count the pops that come after the build.**
+    * **Q&A: iterators, and where the comparator goes.**
+        * **First pass, `priority_queue<int> maxHeap(std::less<int>(), stones);`:** this is the **(comparator, container)** constructor. It copies `stones` into the heap's vector, then heapifies. Valid, but the comparator *object* has to be spelled out because it's the first parameter.
+        * **Current, `(stones.begin(), stones.end())`:** the **iterator** constructor. It copies the range and heapifies, the same O(N) cost. The comparator object defaults to a default-constructed one of the type named in the template arguments.
+        * **"For a min-heap, does `greater` go third, after `.end()`?"** No need. The comparator **type** in the template arguments (`priority_queue<int, vector<int>, greater<int>>`) is what makes it a min-heap. The constructor creates a `greater<int>` by itself. You pass a comparator **object** as the third argument, `(first, last, cmp)`, only when it can't be default-constructed. Verified: a **captureless lambda** can be default-constructed in **C++20**, so `priority_queue<int, vector<int>, decltype(cmp)> pq(v.begin(), v.end());` compiles. In **C++17** it fails ("use of deleted function"), so there you must pass `cmp`. Lambdas that **capture** variables always need the object passed in.
+        * My current file spells out `std::less<int>` in the template arguments. It's redundant (it's the default), but it does make "this is a max-heap" explicit.
+    * **Verified:** both versions match a sort-based brute force on 50,000 random inputs (n ≤ 30, weights ≤ 1000).
+
+* **Beyond the textbook:** weights are capped at 1000, so a **count array** indexed by weight (walk down from the heaviest non-empty bucket) solves it in O(N + W) without a heap. Overkill at n ≤ 30, but it's the standard trick when the value range is small.
+
+* **Time & Space Complexity:**
+    * **Time O(N log N):** O(N) to heapify, then at most N − 1 rounds (each round removes at least one stone), each with 2 pops and ≤ 1 push at O(log N).
+    * **Space O(N):** the heap holds a copy of `stones` (the input is `const&`, so it can't be heapified in place; with a mutable vector, `std::make_heap` on the input itself would need O(1) extra).
