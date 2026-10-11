@@ -154,3 +154,43 @@ Heaps can't remove arbitrary elements. Instead, record that X is dead (in a hash
 *(Entries added one problem at a time as they're solved — same format as the other topic guides: **The Core Pattern**, **The "Gotcha"**, **Time & Space Complexity**, **The Struggle & Insights**.)*
 
 <!-- NeetCode 150 Heap / Priority Queue (7): Kth Largest Element in a Stream · Last Stone Weight · K Closest Points to Origin · Kth Largest Element in an Array · Task Scheduler · Design Twitter · Find Median from Data Stream -->
+
+### [1] Kth Largest Element in a Stream
+
+> First heap problem, and it took a while, not for the code but for the *why*: "I want the k-th **largest**, so why a **min**-heap?" Three versions: `756431b` (push everything, trim on `add`), `c7c3426` (constructor reuses `add`), and the current file, which checks before pushing (the "bouncer").
+
+* **The Core Pattern:** Top-K with a size-K heap of the **opposite** kind (§2 Pattern 1). Keep only the **k largest values seen so far**, in a **min-heap**. Its `top()` is the smallest of those k, and that's exactly the k-th largest overall. Each `add` either lets the new value in (evicting the current smallest) or rejects it. The answer is always `top()`.
+
+* **The question that didn't click: why min-heap, not max-heap?**
+    * **My first approach (max-heap) and why it fails:** put everything in a max-heap and, on each `add`, pop k times to reach the k-th largest. The pops are **destructive**: after the first query, the top k−1 values are gone, so the next query is wrong (and with few enough elements it hits an empty heap). I spotted the fix myself: push those k−1 back after every query. That works, but it's O(k log N) per `add`, and it re-does the same work every time.
+    * **What the question actually needs:** "the k-th largest" is a **threshold**: the weakest member of the top-k group. Values below it never matter again. Values above it push it out and become part of the top k.
+    * **So keep the top-k group, ordered so its *weakest* member is at the door.** That's a min-heap of size k. A max-heap puts the *strongest* at the top, which is the one element you never need to look at.
+    * **The bouncer model (from the transcript):** a club with room for k. When someone new arrives, the bouncer only compares them with the **poorest person inside**. Richer → the poorest is kicked out and the new one gets in; otherwise, rejected. The richest member is buried inside and never consulted.
+    * **Trace, k = 3, stream `100, 50, 200, 10, 75`:** `[100]` → `[50, 100]` → `[50, 100, 200]`, now full, top = 50 = 3rd largest ✔ → `10` < 50, rejected, top stays 50 → `75` > 50, evict 50 → `[75, 100, 200]`, top = 75 ✔.
+    * **"The size is constant"** was the right instinct. After the club fills, the heap size never changes, which is why each step is O(log k), and k is fixed. The total number of values seen doesn't matter.
+
+* **The Struggle & Insights:**
+    * **The backwards `assert`.** `assert(maxHeap_.empty() && "Max heap should not be empty")` aborted on every non-empty heap.
+        * **`assert(cond)` states what must be TRUE.** If `cond` is false, the program prints the expression and aborts. So write the condition you *expect*: `assert(!maxHeap_.empty() && "…")`.
+        * **The `&& "message"` trick:** a string literal turns into a pointer that's never null, so it always counts as `true`. `cond && "msg"` has exactly `cond`'s truth value, and the text just shows up in the failure output. It's documentation, not logic.
+        * `assert` disappears entirely when compiled with `NDEBUG` (typical release builds), so it's a debugging aid, never a substitute for a real check.
+        * The heap it was guarding *would* have gone empty: the pop-k-times approach empties it within a few queries. The assert was pointing at the real problem.
+    * **`k_` never assigned** (one transcript version). An `int` member with no initializer holds garbage, so `size() > k_` compared against random memory. Set it in the **member initializer list**, `KthLargest(int k, …) : k_(k) {…}`, so it holds the right value before the constructor body runs. That matters here because the body calls `add`, which reads `k_`.
+    * **"WTF is `add` and how does it trim?"** `add` is just the class's own method, and the constructor may call it like any function. Feeding each initial number through `add` means the size-k cap is enforced from the very first element, so the heap never holds more than k (k+1 for a moment, in the push-then-pop version). My `756431b` instead pushed all N values, then let the first `add` trim with a `while` loop. That's also correct (verified), just O(N log N) up front and N values in memory.
+    * **The bouncer check — my own idea: "can't I check the top *before* pushing?"** Yes. `push` knows nothing about my size cap: it always sifts the new value up, and the following `pop` sifts back down. Two O(log k) passes, just to throw away a value that was never going to get in. Checking first:
+        * not full → push;
+        * full and `val > top()` → pop, then push;
+        * otherwise, reject in **O(1)**, without touching the heap.
+        * For a stream where most values are too small to matter (the common case for top-k), most `add`s become a single comparison.
+    * **Correction to the other LLM's "reallocation" claim.** It said popping before pushing avoids the vector **reallocating on every `add`**. That's not true. A `vector` grows geometrically and **`pop` never shrinks its capacity**. Measured in review: a million push-then-pop `add`s with k = 1000 changed the underlying capacity 11 times (1 → 2 → … → 1024), all while the heap was first filling, and **never again**. Pop-before-push saves at most one extra growth, when the capacity happens to be exactly k. The real gain from the bouncer is skipping the two sifts on rejects, not memory.
+    * **Beyond the textbook:** an accepted value still costs `pop` + `push`, i.e. two sifts. A hand-rolled heap could **overwrite the root and sift down once** ("replace top"), saving half the work. `std::priority_queue` has no such operation.
+
+* **C++ notes from this problem:**
+    * **Min-heap type:** `std::priority_queue<int, std::vector<int>, std::greater<int>>`. All three template arguments are required, because the comparator is the third one.
+    * **`size() < k_` compares `size_t` with `int`**, and `-Wall -Wextra` flags it (`-Wsign-compare`, verified). It's safe here since `k ≥ 1`, but storing `k_` as `size_t` would make it clean.
+    * **Initializing the heap from the vector in the initializer list** (`minHeap_(nums.begin(), nums.end(), std::greater<int>())`, from the transcript) heapifies all N in O(N), then you pop down to k. Note that members are initialized in **declaration order**, not the order written in the list. The transcript listed `k_` first while `minHeap_` is declared first, which gets a `-Wreorder` warning. Harmless here (neither reads the other), but it's a real bug when one member's initializer uses another.
+
+* **Time & Space Complexity:**
+    * **Constructor:** O(N log k) by feeding each value through `add`.
+    * **`add`:** O(log k) when the value gets in; **O(1)** when the bouncer rejects it.
+    * **Space:** O(k). The heap never holds more than k values, however long the stream.
