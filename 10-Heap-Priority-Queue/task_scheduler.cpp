@@ -1,4 +1,4 @@
-int leastInterval(vector<char>& tasks, int n) {
+int leastInterval(const std::vector<char>& tasks, int n) {
     std::array<uint16_t, 26> taskCount{};
 
     for(const char task : tasks){
@@ -11,29 +11,29 @@ int leastInterval(vector<char>& tasks, int n) {
         if(num) maxHeap.push(num);
     }
 
-    std::vector<int> taskQueue;
-    taskQueue.reserve(26);
+    std::vector<int> taskStack;
+    taskStack.reserve(26);
     int minCount = 0;
 
     while(!maxHeap.empty()){
         int executedCount = 0;
         for(int i = 0; !maxHeap.empty() && i < (n + 1); i++){
             uint16_t taskFrequency = maxHeap.top(); maxHeap.pop();
-            if(taskFrequency > 1) taskQueue.push_back(taskFrequency - 1);
+            if(taskFrequency > 1) taskStack.push_back(taskFrequency - 1);
             executedCount++;
         }
 
-        if(!taskQueue.empty()){
-            // No more tasks in queue
+        if(!taskStack.empty()){
+            // Tasks still in heap after timeout. No idle time needed
             minCount += (n + 1);
         } else {
-            // Tasks still in heap after timeout. No idle time needed
+            // No more tasks in queue
             minCount += executedCount;
         }
 
-        while(!taskQueue.empty()){
-            maxHeap.push(taskQueue.back());
-            taskQueue.pop_back();
+        while(!taskStack.empty()){
+            maxHeap.push(taskStack.back());
+            taskStack.pop_back();
         }
     }
 

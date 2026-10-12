@@ -329,3 +329,42 @@ Heaps can't remove arbitrary elements. Instead, record that X is dead (in a hash
     * **Heap (current):** O(N log K) time, O(K) space; O(N log min(K, N − K)) with the smaller-side trick.
     * **Quickselect:** O(N) average, O(N²) worst (O(N log N) worst for introselect); O(1) extra in-place, O(N) here because of the copy.
     * **Counting:** O(N + R) time, O(R) space, R = value range.
+
+### [5] Task Scheduler
+
+> Long and murky. I had the counting and the max-heap from the start; the wall was **idle time**: when can the next round start, and how do you count the gaps? Four broken versions before the one that works, first pass `4986d50`. It is correct (verified below), and there's an O(1)-after-counting formula that answers my own question: *"only the task frequency should matter, right?"* Yes, and that's the optimal solution.
+
+* **The Core Pattern:** Heap + waiting area (§2 Pattern 4), simulated in **frames of `n + 1` slots**.
+    * **Why `n + 1`:** a task that runs at slot `t` can run again at `t + n + 1` at the earliest. So in any window of `n + 1` consecutive slots, **each task can appear at most once**, and a task run in one frame is free again in the next.
+    * **One frame:** pop up to `n + 1` **distinct** tasks from the max-heap (most remaining first), run each once, park the leftovers (count − 1) in a waiting room, then push the waiting room back for the next frame.
+    * **Counting time:** if anything is left for a later frame, this frame costs the full `n + 1` (any slots not filled by tasks are idle). If nothing is left, it's the final frame, so stop right after the last task: add only the number executed, with no trailing idle.
+    * **Why most-frequent first:** the task with the most copies left is the one that will run out of frames. Spending a frame slot on it now keeps the tail short. Rare tasks are **filler**: they're best spent in slots that would otherwise be idle.
+
+* **The labels don't matter, only the counts.** `taskCount[task - 'A']` throws the letters away, and the heap only holds frequencies. That was the right instinct, and it leads to the formula below.
+
+* **The four wrong versions, and what each one taught:**
+    1. **Push the decremented count straight back during the same round.** The heap re-sorts immediately, so `A` (10 → 9) is the top again and runs **twice in a row**, ignoring the cooldown. *Lesson:* a task that just ran must be **out of the heap** until its cooldown expires. That's what the waiting room is for.
+    2. **Waiting room, but each round pops the whole heap (`currentHeapSize`).** No back-to-back runs any more, but a round now runs **every** distinct task once, and `A` sits in the waiting room long after its cooldown has expired. On the example (`A×3, B×3`, 9 singletons C–K, `n = 7`) it returns **21; the right answer is 18**. All nine singletons get burned in round 1, so later rounds have nothing to fill the gaps between `A`s and `B`s, and those gaps become idle. Optimal: `A B C D E F G H | A B I J K _ _ _ | A B`. *Lesson:* a frame is **`n + 1` slots**, not "everything available". It's the cooldown that sets the frame size, not the heap size.
+    3. **Frame of `n + 1`, but `minCount++` only when a task runs.** The loop exits early when the heap is empty, so idle slots are never counted. `A×2, n = 2` returns 2 instead of 4 (`A _ _ A`). *Lesson:* idle slots cost time too, and the code has to count them somewhere.
+    4. **Full-frame charge decided by `!maxHeap.empty()`.** The question being asked is "is there **any** work left after this frame?" Work left lives in two places: tasks **still in the heap** (not reached this frame) and tasks **in the waiting room** (ran this frame, have copies left). After the frame loop, the heap is usually empty *because* everything is parked in the waiting room, so `!maxHeap.empty()` says "done" while work remains, and the idles get dropped. Wrong on 1,406 of 3,000 random small cases (e.g. `A×2, n = 2` → 2, should be 4).
+    * **Why checking only `taskQueue` is enough** (the fix in `4986d50`): the full condition is "heap not empty **or** waiting room not empty". But if the heap is still non-empty after the loop, the loop must have stopped at `i == n + 1`, so `executedCount == n + 1`, and both branches add the same amount. So the heap half of the condition never changes the result, and checking only the waiting room is enough.
+
+* **The optimal solution: the formula (frequencies only).** Let `f` = the highest frequency, and `m` = how many tasks share that frequency.
+    * **Mental model, the skeleton:** lay out the most frequent task with the minimum gap: `A _ _ A _ _ A` (`n = 2`, `f = 3`). That's `f − 1` full frames of `n + 1` slots, plus a last frame holding just `A`. Any other task that also has count `f` joins the last frame too: `A B _ A B _ A B`, so the last frame holds `m` slots.
+    * Every other task has fewer copies than there are frames, so it can always go into the gaps without breaking its own cooldown (one copy per frame).
+    * **If the gaps fill up and there are still tasks left**, widen the frames: there's no idle at all, and the answer is just the number of tasks.
+    * **`answer = max(tasks.size(), (f − 1) · (n + 1) + m)`**
+    * **The example:** `f = 3`, `m = 2` (A and B), `n = 7` → `(3 − 1) · 8 + 2 = 18`, and `18 > 15` tasks, so 18 ✔.
+    * Verified: the formula, my heap version, and a slot-by-slot simulation all match an exhaustive search (BFS over every possible schedule) on 3,000 small inputs. My heap version also matches the formula on 50,000 random inputs up to 200 tasks, 26 letters, `n ≤ 100`.
+
+* **Code notes on `4986d50`:**
+    * **The two comments are swapped.** `// No more tasks in queue` sits on the branch where the queue is **not** empty, and `// Tasks still in heap…` sits on the final-frame branch. On a murky problem, a wrong comment will mislead the reread. It should say: queue non-empty → more frames to come → charge `n + 1`; otherwise final frame → charge `executedCount`.
+    * **`taskQueue` is used as a stack** (`push_back` / `back` / `pop_back`). That's fine, because the whole waiting room goes back into the heap at once and the heap re-sorts anyway, so the order doesn't matter. The name just suggests FIFO.
+    * **`uint16_t` counts:** at most 10⁴ tasks fits (max 65,535), and the 26-entry `std::array` sits on the stack with no allocation. Nice embedded instinct. `std::less<uint16_t>` is the default, so spelling it out is optional.
+    * `tasks` is only read, so `const std::vector<char>&` would document that (LeetCode's signature uses a non-const ref).
+
+* **Is the heap even needed?** For this problem, no: the formula needs one counting pass plus a scan of 26 counts. The heap simulation is still worth knowing. It's the version that **generalizes** (if the problem asks for the actual schedule, or tasks have different durations, the formula is gone), and it's the shape of a real scheduler: ready queue = max-heap, blocked tasks = waiting room. That's how an RTOS ready list and a timer list work together. Measured at 10⁴ tasks: heap ~0.09 ms, formula ~0.006 ms. Both are instant at these limits.
+
+* **Time & Space Complexity:**
+    * **Heap simulation:** each frame does at most `min(n + 1, 26)` pops/pushes on a heap of ≤ 26 elements, so O(log 26) = O(1) per task. **O(N) total** (N = number of tasks), **O(1) space** (26 counts, ≤ 26 heap entries).
+    * **Formula:** O(N) to count, O(26) to find `f` and `m`. **O(1) space.**
