@@ -88,6 +88,27 @@ When tackling Linked List problems, keep these core patterns in mind:
 * The second half is *always* equal to or exactly one element shorter.
 * **Severing:** `ListNode* second = slow->next; slow->next = nullptr;`
 * **Interweaving:** Because of the length split, simply loop `while (second != nullptr)`. The first half's final node is already correctly pointing to `nullptr`.
+* **Re-solve (Oct 12, 2026), and the same wall again:**
+    * **What happened:** started `slow` at a dummy node, which puts the split one node earlier, so the first half is the **shorter** one (`⌊n/2⌋`). Merging into a **new list** via dummy + tail pointer worked. Switching to the in-place zip then failed whenever the first half was shorter, whatever I tried. It only worked after starting `slow` at `head` (my loop starts both `slow` and `fast` at `head`, so the first half is `⌊n/2⌋ + 1`: never shorter than the second; see the table below).
+    * **Why the dummy + tail merge doesn't care about lengths:** the tail only ever *appends*. It takes one node from each list in turn and finishes with the Merge Two Sorted Lists remainder rule, `tail->next = first ? first : second;`. Whichever list has a leftover node gets attached, so either split works.
+    * **Why the in-place zip does care:** each step is `first->next = second; second->next = firstNext;`. Every second-half node gets its `next` **overwritten** with a first-half node. That's only safe if a first-half node exists to point to. Trace `1→2→3→4→5`, shorter first half `[1, 2]`, reversed second `[5, 4, 3]`:
+        * step 1: `1→5→2`, now `first = 2`, `second = 4`
+        * step 2: `2→4`, then `4->next = firstNext = nullptr`. **Node 3 is lost** (its only incoming link was `4->next`), and `first` is now `nullptr`.
+        * `while (second)` keeps going with `second = 3` and dereferences `first->next` on `nullptr` → crash. `while (first && second)` stops, but drops 3.
+    * **Rule:** in an in-place zip, **the list that goes first must be the longer one** (or equal). Then the extra node is the *middle* node, it ends up last, and it already points to `nullptr` from the split (`slow->next = nullptr`). No leftover handling needed.
+    * **Midpoint cheat sheet** (all with `while (fast && fast->next) { slow = slow->next; fast = fast->next->next; }`, then split after `slow`; **`slow` always ends on the tail of the first half**, and only the split point moves). Measured for n = 1…8, along with whether the in-place zip comes out right:
+
+        | Start | First-half size | n = 1…8 | Zip |
+        | -- | -- | -- | -- |
+        | `slow = head, fast = head` (my re-solve) | `⌊n/2⌋ + 1` | 1 2 2 3 3 4 4 5 | ✅ |
+        | `slow = head, fast = head->next` (`b055cbc`) | `⌈n/2⌉` | 1 1 2 2 3 3 4 4 | ✅ |
+        | `slow = dummy, fast = dummy` | `⌈n/2⌉` | 1 1 2 2 3 3 4 4 | ✅ |
+        | `slow = dummy, fast = head` | `⌊n/2⌋` | 0 1 1 2 2 3 3 4 | ❌ (shorter first half) |
+
+        * **Both at `head` works too, even though it isn't a "true" middle:** for even n the first half gets **two** more nodes than the second (`1→2→3 | 4`). The zip still produces `1, 4, 2, 3` ✔, because the extra first-half nodes are never touched: they stay chained in order and end the list. **The zip only needs first ≥ second.** It doesn't need the halves balanced.
+        * The one that fails is the only one where the **first** half can be shorter (odd n). Before writing the loop, check which half gets the extra node.
+    * **"The merge version was slow":** both are O(N) time, O(1) space, with about the same number of pointer writes. Different LeetCode runtimes at n ≤ 5·10⁴ are mostly noise between runs, not an algorithmic difference.
+    * **Leftover in the committed file (`b055cbc`):** `ListNode dummyNode; newList = &dummyNode; … newList->next = head; head = dummyNode.next;` is dead code from the earlier version. `head` is a by-value parameter, so the last line only changes the local copy (exactly the `[1]` gotcha). Harmless, but it reads as if the zip needs a dummy, which is the opposite of the lesson above.
 
 ### [5] Remove Nth Node From End of List
 
