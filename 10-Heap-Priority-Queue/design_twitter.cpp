@@ -3,9 +3,11 @@ private:
     std::unordered_map<int, std::unordered_set<int>> followersMap_;
     std::unordered_map<int, std::vector<std::pair<int, int>>> tweetListMap_;
     unsigned int time;
+    unsigned int maxTweets;
 public:
     Twitter() {
         time = 0;
+        maxTweets = 10;
     }
     
     void postTweet(int userId, int tweetId) {
@@ -31,9 +33,9 @@ public:
         }
 
         std::vector<int> tweetList;
-        tweetList.reserve(10);
+        tweetList.reserve(maxTweets);
 
-        while(tweetList.size() < 10 && !maxHeap.empty()){
+        while(tweetList.size() < maxTweets && !maxHeap.empty()){
             auto [_, tweetId, user, currentIdx] = maxHeap.top(); maxHeap.pop();
             tweetList.push_back(tweetId);
             if(currentIdx > 0){
