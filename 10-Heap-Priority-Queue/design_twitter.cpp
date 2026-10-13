@@ -3,11 +3,10 @@ private:
     std::unordered_map<int, std::unordered_set<int>> followersMap_;
     std::unordered_map<int, std::vector<std::pair<int, int>>> tweetListMap_;
     unsigned int time;
-    unsigned int maxTweets;
+    static constexpr int maxTweets = 10;
 public:
     Twitter() {
         time = 0;
-        maxTweets = 10;
     }
     
     void postTweet(int userId, int tweetId) {
@@ -15,14 +14,16 @@ public:
         time++;
     }
     
-    vector<int> getNewsFeed(int userId) {
+    vector<int> getNewsFeed(int userId) const {
         std::vector<int> relevantUsers;
-        relevantUsers.reserve(followersMap_[userId].size() + 1);
-        relevantUsers.push_back(userId);
-
-        for(const int followerId : followersMap_[userId]){
-            relevantUsers.push_back(followerId);
+        if(auto it = followersMap_.find(userId); it != followersMap_.end() ){
+            relevantUsers.reserve(it->second.size() + 1);
+            for(const int followerId : it->second){
+                relevantUsers.push_back(followerId);
+            }
         }
+
+        relevantUsers.push_back(userId);
 
         std::priority_queue<std::tuple<unsigned int, int, int, int>> maxHeap;
         for(const int user : relevantUsers){
@@ -39,7 +40,7 @@ public:
             auto [_, tweetId, user, currentIdx] = maxHeap.top(); maxHeap.pop();
             tweetList.push_back(tweetId);
             if(currentIdx > 0){
-                auto& tweetVector = tweetListMap_[user];
+                auto& tweetVector = tweetListMap_.at(user);
                 maxHeap.emplace(tweetVector[currentIdx - 1].first, tweetVector[currentIdx - 1].second,
                 user, currentIdx - 1);
             }
@@ -49,7 +50,7 @@ public:
     }
     
     void follow(int followerId, int followeeId) {
-        followersMap_[followerId].insert(followeeId);
+        if(followerId != followeeId) followersMap_[followerId].insert(followeeId);
     }
     
     void unfollow(int followerId, int followeeId) {
