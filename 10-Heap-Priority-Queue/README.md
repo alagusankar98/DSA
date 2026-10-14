@@ -420,3 +420,44 @@ Heaps can't remove arbitrary elements. Instead, record that X is dead (in a hash
     * `postTweet`, `follow`, `unfollow`: **O(1)** average (hash map / hash set + `emplace_back`).
     * `getNewsFeed`: **O(U log U)** to seed (O(U) with heapify) + **O(10 log U)** for the merge. **O(U)** extra space.
     * Storage: **O(T + total follow edges)**.
+
+### [7] Find Median from Data Stream
+
+> My first Hard. I built the intuition last night with an LLM and coded it this morning, first pass `95103f6`. I mirrored the standard solution (the **min**-heap holds the extra element), which forced me to work out the rebalancing rules myself instead of copying them. The overflow fix in `findMedian` came after review. Verified against a sorted brute-force median: 20,000 random streams, 608,003 `findMedian` checks, 0 mismatches.
+
+* **The Core Pattern:** two heaps (§2 Pattern 3). The median only needs the **two numbers at the middle** of the sorted list. Split the sorted list in half: the middle values are the **largest of the lower half** and the **smallest of the upper half**. Those are exactly the two things heaps give you in O(1).
+    * **Lower half → max-heap** (its top is the biggest of the smalls). **Upper half → min-heap** (its top is the smallest of the bigs).
+    * **Two invariants, both required:** (1) **order**: everything in the max-heap ≤ everything in the min-heap; (2) **balance**: `minHeap.size() − maxHeap.size()` is **0 or 1** (my version; the standard one lets the max-heap hold the extra).
+    * **Median:** equal sizes → average the two tops. Unequal → the top of the bigger heap (the min-heap, in my version).
+
+* **Where I was stuck, and how each one resolved:**
+    * **"This is just a vector, isn't it?"** I suspected a catch, and it's the word *sorted*. Unsorted push + `std::sort` per query is O(N log N) per `findMedian`. Keeping a vector sorted means O(N) shifting per insert. Heaps get O(log N) insert and O(1) query because they never sort what isn't in the middle.
+    * **I described the halves backwards at first.** For `[9,8,7,6,5]` I said "min-heap `[5,6]`, max-heap `[9,8,7]`". It's the reverse: the **max-heap holds the small numbers**. The name tells you what sits on *top*, not what the heap holds. Same trap as in K Closest Points `[3]`: say "small half → max-heap" before typing.
+    * **"How can I know the pivot before the heaps are built?"** You don't need to. **The pivot is just the top of the primary heap**, and it moves as numbers arrive. Each new number is routed by comparing it with that top. If I balance by size alone (alternating heaps), the order invariant breaks and I get scrambled halves like `[7, 9]` / `[8, 6, 5]`.
+    * **Rebalance in `addNum` or in `findMedian`?** In `addNum`, every time, for two reasons. **Correctness:** routing reads the top, so if balance is allowed to drift, the top stops being the middle and later numbers go to the wrong side, breaking the order invariant. A lazy fix in `findMedian` would have to repair an unbounded mess. **Cost:** fixed immediately, the imbalance is never more than 1, so the fix is at most one pop + one push.
+
+* **Why rebalancing needs two conditions (my "can't convince myself" question):** look at the size difference `d = min.size() − max.size()`.
+    * **Before an add, `d` is 0 or 1** (the invariant).
+    * **An add changes `d` by exactly 1:** routed to min → `d + 1`; routed to max → `d − 1`.
+    * So after routing, `d ∈ {−1, 0, 1, 2}`. There are **two** illegal values, **one at each end**: `−1` (max got bigger) and `2` (min ran ahead by two). Each end needs its own check, and a single condition guards only one side. With only my `max > min` check, `d = 2` goes uncaught, so min keeps growing and the max-heap never gets anything.
+    * **One move fixes either case:** moving a top across changes `d` by 2. `−1 → 1`, `2 → 0`. Both are back in range.
+    * **`else if` is safe:** `d` can't be `−1` and `2` at the same time, so at most one fix runs.
+    * **Moving the *top* keeps the order invariant:** the max-heap's top is the largest of the small half, so on the other side it's still ≤ everything in the min-heap. The same holds in reverse.
+
+* **Code notes on `95103f6` (+ the working-tree fix):**
+    * **The empty-check bootstrap is exactly right.** Because `d ≥ 0` always, an empty min-heap implies both are empty, so `minHeap_.empty()` means "first number". It could also be folded into the routing (`if (minHeap_.empty() || num > minHeap_.top())`), after which the rebalance does nothing, but the early return reads clearly.
+    * **Ties (`num == minHeap_.top()`) go to the max-heap.** That's fine: `num ≤` every element in the min-heap, so the order invariant holds.
+    * **Cost per `addNum`:** 1 push, plus at most 1 pop + 1 push. The common alternative ("always push to max, move its top to min, then rebalance") always does 3 operations. Routing first skips the move when the number already lands on the right side.
+    * **Overflow fix:** `static_cast<double>(a + b)` adds in `int` **first**. Casting one operand first (`static_cast<double>(a) + b`) makes the addition happen in `double`. Measured: two `2'000'000'000`s give **−147483648.0** with the old line (UBSan: *"signed integer overflow"*) and `2000000000.0` with the fix. **Correction to the other LLM:** signed overflow is **undefined behaviour**, not a guaranteed wrap to negative. The wrap is just what x86 happens to do. And on LeetCode it can't happen at all (`|num| ≤ 10⁵`). The fix is still the right habit: it's the same bug as `(lo + hi) / 2` in Binary Search.
+    * **Small cleanups:** `findMedian` can be `const` (it only reads tops). The empty constructor can go (or `= default`). The comment *"Max heap should always be <= min heap"* is about **size**, but reads like the **order** invariant. Say "size" to keep the two invariants apart.
+    * **"Beats 5% on LeetCode": is it slow?** No. Measured at the problem's limit (25,000 adds + 25,000 medians, `-O2`): **mine 0.99 ms**, the textbook "always push to max, move its top to min" version **2.04 ms**, a sorted `vector` with `insert` 9.1 ms. Mine is already ~2× the standard solution, because routing first skips work. Results that small are swamped by LeetCode's harness and machine noise (resubmitting moves the percentile), so the percentile says nothing about the algorithm. An interviewer judges complexity, correctness, and how you explain them, and that's O(log N) / O(1), which is optimal.
+    * `findMedian` on an empty stream is UB (`top()` on empty). The problem guarantees at least one number first, so no check is needed, but it's worth saying out loud in an interview.
+
+* **Follow-ups an interviewer asks (from the LeetCode problem):**
+    * **All numbers in `[0, 100]`:** drop the heaps. Use a `std::array<int, 101>` of counts plus a running total: `addNum` is O(1), and `findMedian` walks the counts to the middle in O(101) = O(1). That's the histogram trick, a fixed-size table with no allocation, very embedded.
+    * **99% in `[0, 100]`:** same buckets, plus two counters for "below 0" and "above 100" (or small heaps for those outliers). The median almost always lands in a bucket.
+    * **Sliding-window median** (last W samples only, the real sensor-filter version): now numbers must **leave**, and heaps can't remove arbitrary elements. You need lazy deletion (§2 Pattern 6) or a `std::multiset` with an iterator at the middle.
+
+* **Time & Space Complexity:**
+    * `addNum`: **O(log N)** (≤ 3 heap operations). `findMedian`: **O(1)**.
+    * Space: **O(N)**: every number is stored once, split across the two heaps.
