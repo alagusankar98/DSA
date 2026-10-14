@@ -6,4 +6,5 @@ The canonical rules for working in this repo live in `.agents/rules/` so that ev
 @.agents/rules/project.md
 @.agents/rules/readme-conventions.md
 @.agents/rules/no-code-dumps.md
+@.agents/rules/cpp-notes.md
 @.agents/rules/user-background.md
