@@ -16,6 +16,8 @@ void createSubset(const std::vector<int>& nums, size_t i, std::vector<int>& temp
 std::vector<std::vector<int>> subsets(const vector<int>& nums) {
     std::vector<std::vector<int>> resultVector;
     std::vector<int> tempVector;
+    tempVector.reserve(nums.size());
+    resultVector.reserve(1 << nums.size()); // Will contain 2^n elements
     createSubset(nums, 0, tempVector, resultVector);
     return resultVector;
 }

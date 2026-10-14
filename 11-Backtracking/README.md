@@ -164,3 +164,34 @@ Start from every cell that could begin the path; from each, DFS into neighbours 
     * **Time O(m · n · 3^L):** every cell can be a start. The first step has 4 directions; every later step has at most **3**, because the cell you came from is marked. Precisely `4 · 3^(L-1)` per start, which is O(3^L).
     * **Space O(L)** recursion depth (at most 15 frames on LeetCode, so trivial), **plus O(m · n)** for the `seen` grid. The set version is O(L) for the set (it only holds the current path), but slower. The in-place version is O(L) total.
     * **Known extra pruning, not used here:** before searching, count letters on the board and return `false` if the word needs more of some letter than exists. And if the word's last letter is rarer on the board than its first, search the reversed word, so fewer starts survive the first check.
+
+### [2] Subsets
+
+> Stuck for a long time. I read the solution in the morning and didn't understand it, then got an intuition from an LLM but couldn't turn it into code. In the end I coded it from a half-understood solution, mostly from memory. First pass `1231003`; the two `reserve` calls were added in the working tree. Two specific walls: **how can "include" come first when I can't `pop_back` from an empty vector?** and **I blanked on the iterative version.** Both are resolved below, so a reread should rebuild this from scratch.
+
+* **The Core Pattern:** include / exclude (§1 "Four ways", row 1). Walk the array **one index at a time**, and at index `i` split into two universes: **take `nums[i]`** or **leave it**. Both universes move to `i + 1`. When `i == n`, every element has had its yes/no decision, so `temp` is one complete subset: copy it into the result and return. The tree is exactly the one drawn in §1: depth `i` decides `nums[i]`, and the 2ⁿ leaves are the answers.
+
+* **My first model was the wrong one: a `seen` array.** I started with `temp` plus a `seen[n]` array of `false` and tried to "consume an index, mark it, then add the others", and it blurred (how many iterations? when to stop? what to unmark?). **`seen` is the Permutations tool** (§2 Pattern 2): there, order matters (`[1,2] ≠ [2,1]`), so every position may pick *any* element and you need to remember which are used. For subsets, order doesn't matter, so only ever **move forward**. If you never look back, there's nothing to remember. **Self-check:** "Does order matter?" No → a forward index (`i` or `start`), no `seen`. Yes → `used[]`.
+
+* **The wall: "include first, but I can't pop an empty array".** The fear was that `pop_back` might run on an empty `temp`. It never can, because of one invariant:
+    * **Every call returns `temp` exactly as it found it.** The base case doesn't touch it (it only copies it). The recursive case does `push(nums[i])` → call → `pop` → call. The first call returns `temp` unchanged (by the same invariant, one level down), so the `pop` removes **exactly the element this frame just pushed**, never anything else. The vector is never empty at that point: it holds at least the element this frame pushed.
+    * So `push` → recurse → `pop` is a **matched pair inside one frame**, like a register save and restore around a call. The second call (exclude) then sees `temp` exactly as this frame received it. That *is* "not taking `nums[i]`", so the exclude branch needs no code of its own: it's just the second call.
+    * **Trace, `[1, 2]`:** `f(0, [])` push 1 → `f(1, [1])` push 2 → `f(2, [1,2])` record `[1,2]` · pop → `[1]` → `f(2, [1])` record `[1]` · back in `f(0)`: pop → `[]` → `f(1, [])` push 2 → record `[2]` · pop → record `[]`. Output `[1,2], [1], [2], []`, and `temp` is back to `[]` at the end.
+    * **Exclude first works just as well:** call → push → call → pop. Same 2ⁿ subsets, mirrored order (`[]` first). The order of the two branches is a free choice; only the matched push/pop pair is required.
+
+* **The iterative versions I blanked on (two of them, both short):**
+    * **Cascade (doubling):** start with `result = {[]}`. For each `num`, go over **only the subsets that existed before this `num`** (save `size()` first, because you're appending to the same vector), and add a copy of each with `num` appended. `[] → [], [1] → [], [1], [2], [1,2] → …`. Each element doubles the count: 1 → 2 → 4 → 2ⁿ. It's the include/exclude tree built level by level instead of path by path. **Gotcha:** use an index, not a range-for. `push_back` while iterating over the same vector invalidates the iterators.
+    * **Bitmask (this one should click from Bit Manipulation):** n elements → 2ⁿ masks, and **each integer `0 … 2ⁿ − 1` *is* one subset**. Bit `j` set means "include `nums[j]`". Loop over `mask`, and for each `j` test `mask >> j & 1`. No recursion and no state to undo, just a counter. It's the same thing as enumerating every value of an n-bit register.
+    * **The `start`-loop form (§2 Pattern 1)** is a third shape: record `temp` at **every** node, then `for (j = start; j < n; ++j) { push; recurse(j + 1); pop; }`. Same 2ⁿ results. It's worth knowing because Combination Sum and Subsets II use this shape, not the two-call one.
+
+* **Corrections to the other LLM's review:**
+    * **"`reserve(1 << n)` makes it mathematically perfect":** measured, it makes no difference. n = 10: 0.034 ms vs 0.037 ms. n = 20: 83 ms with `reserve` vs 70 ms without (noise, plus reserving 25 MB up front). When the outer vector grows, it **moves** its inner vectors (a 24-byte pointer swap each), which is cheap. The real cost is the **2ⁿ heap allocations** from copying `temp` into the result at each leaf, and `reserve` can't remove those. Keep it if you like (it's free when the size is known), but it isn't an optimization worth calling out.
+    * **"Pass-by-reference ensures strict O(N) memory":** the **auxiliary** space is O(n) (recursion depth n + `temp`). The output is **O(n · 2ⁿ)** and dominates; say both.
+    * **`1 << nums.size()`:** `1` is an `int`, so the shift happens in 32-bit signed arithmetic. That's fine for n ≤ 10 (the LeetCode limit), but it's UB from n = 31. `size_t{1} << nums.size()` says what you mean.
+
+* **Code notes on `1231003` (+ working tree):**
+    * `tempVector.reserve(nums.size())`: this one is right. `temp` never holds more than n elements, so it never reallocates during the search (§1 Hardware Reality).
+    * `if (i >= nums.size())`: `==` is enough, since `i` only ever goes up by 1. `>=` is the defensive version. Either is fine.
+    * `subsets` takes `const vector<int>&`, but LeetCode's signature is a non-const ref. It's fine to tighten it locally.
+
+* **Time & Space Complexity:** **O(n · 2ⁿ)** time (2ⁿ leaves, each with an O(n) copy; the 2ⁿ − 1 internal nodes do O(1) each). **O(n)** auxiliary space (depth + `temp`), plus **O(n · 2ⁿ)** for the output.
