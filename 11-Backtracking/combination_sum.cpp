@@ -6,11 +6,11 @@ void sumHelper(const std::vector<int>& nums, std::vector<int>& tempVector, int t
 
     if(i >= nums.size() || tempSum > target) return;
 
-    tempVector.push_back(nums[i]); tempSum += nums[i];
+    tempVector.push_back(nums[i]);
 
-    sumHelper(nums, tempVector, tempSum, i, target, resultVector);
+    sumHelper(nums, tempVector, tempSum + nums[i], i, target, resultVector);
 
-    tempVector.pop_back(); tempSum -= nums[i];
+    tempVector.pop_back();
 
     sumHelper(nums, tempVector, tempSum, i + 1, target, resultVector);
 }
@@ -18,7 +18,10 @@ std::vector<std::vector<int>> combinationSum(const std::vector<int>& nums, int t
     std::vector<std::vector<int>> resultVector;
     std::vector<int> tempVector;
 
-    sumHelper(nums, tempVector, 0, 0, target, resultVector);
+    std::vector<int> numsCopy(nums.begin(), nums.end());
+    std::sort(numsCopy.begin(), numsCopy.end());
+
+    sumHelper(numsCopy, tempVector, 0, 0, target, resultVector);
 
     return resultVector;
 }

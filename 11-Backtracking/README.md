@@ -195,3 +195,34 @@ Start from every cell that could begin the path; from each, DFS into neighbours 
     * `subsets` takes `const vector<int>&`, but LeetCode's signature is a non-const ref. It's fine to tighten it locally.
 
 * **Time & Space Complexity:** **O(n · 2ⁿ)** time (2ⁿ leaves, each with an O(n) copy; the 2ⁿ − 1 internal nodes do O(1) each). **O(n)** auxiliary space (depth + `temp`), plus **O(n · 2ⁿ)** for the output.
+
+### [3] Combination Sum
+
+> Started with no idea at all. I could see "if the target is divisible by a number, repeat it x times", but not how that scales to x of one number plus y of another. With nudges only (no code), I wrote the first pass `98354ce`. **My process, worth reusing:** (1) decide the arguments the helper needs, (2) write the base cases in order: record on hitting the target, back out when it's exceeded, stop at the index boundary *before* reading `nums[i]`, (3) write the two recursive calls: stay on the same index, or move forward. Verified against an independent DP count of the combinations on 3,000 random inputs: 0 mismatches, no duplicates.
+
+* **The Core Pattern:** Subsets' include/exclude tree (`[2]`) **with one argument changed**. At index `i`:
+    * **take** `nums[i]` → **stay at `i`** (it may be used again)
+    * **skip** `nums[i]` → **go to `i + 1`** (and never use it again on this path)
+    * In Subsets both branches went to `i + 1`. Here, keeping the take branch at `i` is the whole difference.
+
+* **Where I was stuck, and how each one resolved:**
+    * **"x of this, y of that: how does it scale?"** You never decide counts up front. The counts **come out of the path**: "2 used three times" is just *take, take, take, skip* at index 0. One small decision per level, exactly as in Subsets, where nobody decided "this subset has 2 elements" either.
+    * **"When it exceeds, backtrack and somehow not add that number again."** No extra logic is needed. Exceeding is just a `return`: the parent's `pop_back` undoes the last push, and the parent goes on to its **skip** branch, which is the "don't add it again" I was looking for.
+    * **"I shouldn't add the same combination twice."** It's solved by the same forward-only rule as Subsets. `[2,3]` and `[3,2]` could both appear only if, after skipping past 2, you could come back to it, and skip only moves forward. Each combination is produced in exactly one order: non-decreasing index.
+    * **"What if it's exceeded by 3 and the next number is −3?"** Then the prune would be wrong. It's safe **only because every candidate is positive** (constraints: `2 ≤ candidates[i] ≤ 40`). With positive numbers, the sum can only grow, so once it's over the target, the whole subtree has no answers. And with reuse plus a negative number, the problem itself breaks: `[3, −3]` with target 3 gives `[3]`, `[3,3,−3]`, `[3,3,3,−3,−3]`, … infinitely many answers. **Habit:** before writing any prune, name the constraint that makes it safe.
+
+* **Code notes on `98354ce`:**
+    * **Base-case order is right.** "Hit the target" is checked before "out of elements / exceeded", so a finished combination is recorded before anything can reject it, and `nums[i]` is never read with `i == n`. (Here the order happens not to change the output, since a skip can't arrive at `i == n` with the target already met, because the parent would have recorded and returned. But "record first, then reject" is the order that stays correct when the problem changes.)
+    * **`tempSum` is passed by value, so `tempSum -= nums[i]` is only there because the local was mutated.** An alternative with nothing to undo: pass `tempSum + nums[i]` straight into the take call. **The rule this shows:** only state that's **shared by reference** (`tempVector`) needs an un-choose step. By-value arguments restore themselves when the call returns, because each frame has its own copy. Tracking **what's left** (`target − tempSum`) instead also drops one parameter: the base cases become `left == 0` and `left < 0`.
+    * `combinationSum` takes `const vector<int>&` (LeetCode's signature is a non-const ref). Fine, and the same as Subsets.
+
+* **The optimization to try yourself: sort, then prune both branches at once.** Right now, an over-target take returns, but the **skip** branch keeps walking `i + 1, i + 2, …`, and each step tries a take that also overshoots. If `nums` is sorted ascending, then `nums[i] > left` means **every later candidate is too big as well**, so *both* branches are dead and the helper can return before either call. Measured on candidates `2…31` with target 40 (6,131 answers):
+    | Version | Helper calls | Time |
+    | -- | -- | -- |
+    | my first pass `98354ce` | 1,270,815 | 2.9 ms |
+    | same two-call shape, sorted + the one-condition prune | 74,541 | 0.55 ms |
+    | `start`-loop shape (§2 Pattern 1), sorted + `break` | 37,271 | 0.50 ms |
+
+    That's 17× fewer calls from sorting once and changing one condition. The `start`-loop version is the shape Combination Sum II needs (skipping duplicate siblings only works in a loop), so it's worth writing once here.
+
+* **Time & Space Complexity** (n = candidates, T = target, m = smallest candidate): a path makes at most T/m takes plus n skips, so the depth is ≤ **T/m + n**, and the tree has **O(2^(T/m + n))** nodes as a loose bound (pruning cuts most of them; in practice it's driven by the number of answers). Each recorded answer costs an O(T/m) copy. **Auxiliary space O(T/m + n)** (recursion depth + `tempVector`), plus the output.
