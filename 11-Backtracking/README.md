@@ -216,13 +216,18 @@ Start from every cell that could begin the path; from each, DFS into neighbours 
     * **`tempSum` is passed by value, so `tempSum -= nums[i]` is only there because the local was mutated.** An alternative with nothing to undo: pass `tempSum + nums[i]` straight into the take call. **The rule this shows:** only state that's **shared by reference** (`tempVector`) needs an un-choose step. By-value arguments restore themselves when the call returns, because each frame has its own copy. Tracking **what's left** (`target − tempSum`) instead also drops one parameter: the base cases become `left == 0` and `left < 0`.
     * `combinationSum` takes `const vector<int>&` (LeetCode's signature is a non-const ref). Fine, and the same as Subsets.
 
-* **The optimization to try yourself: sort, then prune both branches at once.** Right now, an over-target take returns, but the **skip** branch keeps walking `i + 1, i + 2, …`, and each step tries a take that also overshoots. If `nums` is sorted ascending, then `nums[i] > left` means **every later candidate is too big as well**, so *both* branches are dead and the helper can return before either call. Measured on candidates `2…31` with target 40 (6,131 answers):
+* **The optimization (implemented in the working tree, after `9b43732` added the sort): sort, then prune both branches at once.** Right now, an over-target take returns, but the **skip** branch keeps walking `i + 1, i + 2, …`, and each step tries a take that also overshoots. If `nums` is sorted ascending, then `nums[i] > left` means **every later candidate is too big as well**, so *both* branches are dead and the helper can return before either call. Measured on candidates `2…31` with target 40 (6,131 answers):
     | Version | Helper calls | Time |
     | -- | -- | -- |
     | my first pass `98354ce` | 1,270,815 | 2.9 ms |
     | same two-call shape, sorted + the one-condition prune | 74,541 | 0.55 ms |
     | `start`-loop shape (§2 Pattern 1), sorted + `break` | 37,271 | 0.50 ms |
 
-    That's 17× fewer calls from sorting once and changing one condition. The `start`-loop version is the shape Combination Sum II needs (skipping duplicate siblings only works in a loop), so it's worth writing once here.
+    | **my final version** (sorted, `tempSum + nums[i] > target` → return, before the push) | **74,541** | **0.42 ms** |
+
+    That's 17× fewer calls from sorting once and changing one condition.
+    * **Where the waste was (I didn't see it at first), as a trace:** `[2,3,6,7]`, target 7, path `[2,2,2]`, so 1 is left at `i = 0`. Nothing can fit any more, but the old code still made **8 calls**: take 2 → overshoot, skip → take 3 → overshoot, skip → take 6 → overshoot, skip → take 7 → overshoot, skip → `i = 4`. The skip branch walks down the right edge, and every take on the way fails. Frames like this one are all over the tree.
+    * **Sorting alone did nothing** (`9b43732`). The old check `tempSum > target` fires *after* a take has overshot, one level down. The cut comes from asking **"does `nums[i]` fit in what's left?" before taking it**: sorted ascending means that if `nums[i]` doesn't fit, nothing after it does either, so the whole frame returns. **Reject before you take.**
+    * **Why the skip call needs no check of its own:** it enters a frame that runs the same fit check against `nums[i + 1]` at the top. And because a take only happens when it fits, `tempSum` can never exceed `target` on entry, so the old `tempSum > target` became dead code. I dropped it and left a comment explaining why. The `start`-loop version is the shape Combination Sum II needs (skipping duplicate siblings only works in a loop), so it's worth writing once here.
 
 * **Time & Space Complexity** (n = candidates, T = target, m = smallest candidate): a path makes at most T/m takes plus n skips, so the depth is ≤ **T/m + n**, and the tree has **O(2^(T/m + n))** nodes as a loose bound (pruning cuts most of them; in practice it's driven by the number of answers). Each recorded answer costs an O(T/m) copy. **Auxiliary space O(T/m + n)** (recursion depth + `tempVector`), plus the output.
