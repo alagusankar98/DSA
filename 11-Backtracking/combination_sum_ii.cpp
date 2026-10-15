@@ -4,7 +4,7 @@ void combinationHelper(const std::vector<int>& candidates, std::vector<std::vect
         return;
     }
 
-    if(i >= candidates.size() || tempSum > target) return;
+    if(i >= candidates.size() || (tempSum + candidates[i]) > target) return;
 
     tempVector.push_back(candidates[i]);
 
