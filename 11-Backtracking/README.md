@@ -319,3 +319,32 @@ Start from every cell that could begin the path; from each, DFS into neighbours 
 * **Another approach worth knowing: swap in place.** Fix position `k` by swapping each of `nums[k…n−1]` into slot `k`, recurse on `k + 1`, then swap back. No `seen` at all and no separate `tempVector`: the array itself is the path, and swap-back is the un-choose step. It needs a mutable copy of `nums`.
 
 * **Time & Space Complexity:** **n!** leaves, each copied in O(n). The internal nodes add up to about **e · n!** (≈ 2.72 · n!), each doing an O(n) scan. So **O(n · n!)** time. **O(n)** auxiliary space (depth n, `tempVector`, the used record), plus **O(n · n!)** for the output.
+
+### [6] Subsets II
+
+> Passed on the first try (`09163f7`) after rereading Subsets `[2]` and Combination Sum II `[4]`. It's literally `[2]`'s two-call tree plus `[4]`'s sort and skip-the-twins. **But it felt like magic, not understanding.** This entry is the "why", so a reread can rebuild it from first principles instead of from memory. Verified against a brute force (every index subset, deduplicated) on 3,000 random inputs: 0 mismatches. The output count also equals the formula below every time.
+
+* **The Core Pattern:** `[2]` (take → `i + 1`, skip → `i + 1`, record at `i == n`) + sort + **on the skip side, jump past every copy of `nums[i]`** (the `while` from `[4]`). There's no target, so the only base case is `i == n`: every leaf is a valid subset.
+
+* **My first idea (and why it duplicates):** "push the empty set, loop `0…n`, keep index 0 fixed and repeat for the others". That's the plain `[2]` tree, which treats `2a` and `2b` as different elements. On `[1, 2, 2]` it gives 8 subsets, not 6. `[1, 2]` appears twice (take `2a` / skip `2b`, and skip `2a` / take `2b`), and so does `[2]`.
+
+* **Why it's not magic: count the copies.** This is the argument to rebuild from.
+    * Take a value that appears **k** times, e.g. `2, 2, 2`. As far as the answer is concerned, a subset doesn't care **which** 2s it holds, only **how many**: 0, 1, 2 or 3. That's **k + 1** distinct choices.
+    * The plain tree chooses *which* copies (each one in or out): 2ᵏ paths for only k + 1 distinct outcomes. That's where the duplicates come from: "one 2" can be made 3 ways (`2a`, `2b` or `2c`).
+    * **What the skip does:** at the first copy of the value, the code can only:
+        * **skip** → jump past the whole run → **0 copies**
+        * **take**, then at the next copy: skip → past the run → **1 copy**
+        * take, take, skip → **2 copies**
+        * take, take, take → **3 copies**
+    * That's **exactly k + 1 paths, one per count.** Every path uses the **leftmost** copies (`2a`, then `2a 2b`, …), never `2b` alone. **"If you use c copies, use the first c"** is the rule, and the `while` loop enforces it. Each multiset has exactly one path, so it appears exactly once.
+    * **Why only on the skip side:** take stays *inside* the run (the next index may be another copy, and you may want more). Skip means "I'm done with this value", so it leaves the run entirely. If skip could land on `2b`, it could "change its mind" and take a 2 after all, which is the duplicate.
+    * **Why sort:** "the first c copies" only works if the copies are **adjacent**, so the run is one contiguous block the `while` can jump over.
+    * **The check that proves it:** the number of answers = **∏ (copies of each value + 1)**. `[1, 2, 2]`: (1+1) · (2+1) = **6** ✔. All distinct: 2ⁿ, the Subsets `[2]` formula as the special case where every k = 1. The verification checked this formula on all 3,000 inputs.
+
+* **The same proof covers Combination Sum II `[4]`.** It's the same "first c copies" argument with a target added. Duplicate handling in this whole topic comes down to one idea: **choose a count per value, not a set of indices.**
+
+* **The `start`-loop shape does the same thing** (§2 Pattern 3): record at every node, loop `j = start…n−1`, and skip `j` when `j > start && nums[j] == nums[j−1]`. "At this level, only the first copy of each value may be *the next* element" is the same leftmost-copies rule, expressed per level.
+
+* **Code notes on `09163f7`:** the bounds check comes before `nums[i + 1]` in the `while` (the `[4]` lesson held). `tempVector.reserve(n)` is the one that pays. The sorted copy keeps the input `const`. Nothing to fix.
+
+* **Time & Space Complexity:** **O(n log n)** sort + **O(n · 2ⁿ)** worst case (all distinct). With duplicates, the leaves are **∏ (kᵥ + 1)** and each is copied in O(n). **O(n)** auxiliary, plus the output.
