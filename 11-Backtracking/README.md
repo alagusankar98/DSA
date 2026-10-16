@@ -231,3 +231,47 @@ Start from every cell that could begin the path; from each, DFS into neighbours 
     * **Why the skip call needs no check of its own:** it enters a frame that runs the same fit check against `nums[i + 1]` at the top. And because a take only happens when it fits, `tempSum` can never exceed `target` on entry, so the old `tempSum > target` became dead code. I dropped it and left a comment explaining why. The `start`-loop version is the shape Combination Sum II needs (skipping duplicate siblings only works in a loop), so it's worth writing once here.
 
 * **Time & Space Complexity** (n = candidates, T = target, m = smallest candidate): a path makes at most T/m takes plus n skips, so the depth is ≤ **T/m + n**, and the tree has **O(2^(T/m + n))** nodes as a loose bound (pruning cuts most of them; in practice it's driven by the number of answers). Each recorded answer costs an O(T/m) copy. **Auxiliary space O(T/m + n)** (recursion depth + `tempVector`), plus the output.
+
+### [4] Combination Sum II
+
+> Took a while, with nudges only. First pass `790f0a9`, then `87baaa5` with the Combination Sum `[3]` prune put back after review (I'd forgotten it), and a working-tree refactor that counts up from `−target` to 0. I came in with the right index reasoning on my own; the wall was **duplicate values**. Four bugs on the way, each one a classic (below). Verified against a brute force (every index subset, deduplicated) on 3,000 random inputs with heavy duplicates: 0 mismatches.
+
+* **The Core Pattern:** Subsets' include/exclude tree (`[2]`), where **both** branches move to `i + 1` (each element is used at most once), plus **sort and skip equal values on the exclude side**. That's the two-call version of §2 Pattern 3.
+    * **Include `candidates[i]` → `i + 1`.** The next index may hold **another copy** of the same value. That's how `[1, 1, 6]` gets built from two different `1`s.
+    * **Exclude `candidates[i]` → jump past *every* equal value, then `i + 1`.** Excluding means *"I'm done with the value 1"*, not *"I'm done with this index"*. If the exclude branch landed on the next `1`, it could take a 1 after all, and that's the duplicate.
+    * **The decision is asymmetric:** include → "at least one more of this value". Exclude → "no more of this value, ever, on this path".
+
+* **What I got right before any help:** both calls advance to `i + 1`, so **no index is ever reused**, and call 1 and call 2 never do the same work at the same step (they differ in whether `candidates[i]` is in the basket). Correct, and it's the reason the duplicates are a **value** problem, not an index problem.
+
+* **Why duplicates still appeared (the `1a` / `1b` trace):** `[1, 1, 2]`, target 3. Label the ones `1a` (index 0) and `1b` (index 1).
+    * Include `1a`, exclude `1b`, include `2` → `[1, 2]`.
+    * Exclude `1a`, include `1b`, include `2` → `[1, 2]` **again**.
+    * Two different index sets with the same values give the same combination. The fix: once the exclude branch rejects `1a`, it must not be offered `1b` either.
+
+* **The wrong fix I rejected myself: a global `unordered_set` of "values already used".** With `[1, 1, 2]` and target 2, the answer is `[1, 1]`. A global set would see the first `1`, ban the value, and never build `[1, 1]`. Duplicates are fine **down** a path (include → include). They're only a problem **across sibling branches** (exclude one copy, then include its twin). The skip has to happen at that one decision point, not globally.
+
+* **Sort first.** The skip only works if equal values are **adjacent**. In `[1, 2, 1]` the two 1s are separated by the 2, so "skip past equal neighbours" never sees the second one. The input is `const&`, so sort a copy (`candidatesCopy(candidates)`) rather than mutating the caller's data.
+
+* **The four bugs, in order (each one worth remembering):**
+    1. **Early `return` without undoing `tempSum`:** the next frames used a stale sum and recorded wrong combinations. *Fix:* pass `tempSum + candidates[i]` as the argument. By-value state undoes itself (the `[3]` lesson, applied again).
+    2. **Early `return` before `pop_back`:** `tempVector` kept the last element. I first tried a second `pop_back` inside the `if`, then saw the simpler fix: **pop first, then decide**. *Rule:* undo the choice immediately after the include call, before any branching logic.
+    3. **`return` instead of skip:** `if (candidates[i] == candidates[i+1]) return;` didn't just skip the twin, it **killed the whole exclude branch**. On `[10,1,2,7,6,1,5]` (sorted `[1,1,2,5,6,7,10]`), target 8, at the root this deleted every combination without a 1, which lost `[2, 6]`. **Every answer I found started with 1.** That pattern was the clue. *Fix:* advance `i` past the duplicates, then **still make the exclude call**.
+    4. **`if` instead of `while`:** an `if` steps over one duplicate. `[1, 1, 1, 2]` needs to step over two. *Fix:* `while (i + 1 < n && candidates[i] == candidates[i + 1]) ++i;`, and the bounds check comes first so `candidates[i + 1]` is never read past the end.
+    5. *(And a repeat:* I forgot the `[3]` prune entirely. The review put it back: `tempSum + candidates[i] > target` → return, which kills **both** branches, because sorted means every later value is too big as well.)
+
+* **My condition reduction:** the full guard would be `tempSum > target || tempSum + candidates[i] > target`. Since every candidate is **positive** (`1 ≤ candidates[i] ≤ 50`), `tempSum > target` implies `tempSum + candidates[i] > target`, so the first half is **subsumed** and only the second half is needed. (It also can't happen at all, as in `[3]`: a take only happens when it fits.) Same habit as before: name the constraint that makes the simplification safe. Here it's positivity again.
+
+* **The working-tree refactor: count up from `−target` to 0.** The `target` parameter is gone: start with `tempSum = −target`, the base case is `tempSum == 0`, and the prune is `tempSum + candidates[i] > 0`. Correct, and it's the same arithmetic as the usual **"remaining"** form (start at `target`, subtract, base case `remaining == 0`, prune `candidates[i] > remaining`), with the sign flipped. The remaining form reads more directly ("does it still fit?") and avoids the `-1 * target` setup. Either is fine; just make sure the name says what the value means.
+
+* **Q&A: what about zeros? (Not allowed by the constraints, but worth knowing.)** Two separate cases:
+    * **A zero *target* is harmless.** With positive candidates the root matches immediately and the answer is `[[]]`, in both `[3]` and `[4]`.
+    * **A zero *candidate* in `[3]` causes infinite recursion:** take-0 stays at `i` without changing the sum, forever, until the stack overflows. The problem *must* forbid it.
+    * **A zero candidate in `[4]` terminates,** because both calls move to `i + 1`, and the duplicate skip still works: `[0, 0, 1]` with target 1 gives `[0,0,1]`, `[0,1]`, `[1]`, each exactly once (tested). But `[0, 0]` with target 0 returns only `[]`, never `[0]` or `[0, 0]`. **The cause isn't the duplicate logic, it's record-and-*return*:** the base case stops at the first match, and zeros are the only values that could extend a finished combination. If zeros were allowed, the fix would be to record and *keep going*.
+    * Positivity has now been the safety condition three times: the prune, the guard reduction, and record-and-return.
+* **Base-case order matters here (unlike `[3]`):** include moves to `i + 1`, so a combination that finishes on the **last** element arrives with `i == n`. If the index check ran first, it would throw that answer away. Record first, then reject. In `[3]` the order happened not to matter, because take stayed at `i`. Here it does.
+
+* **Corrections to the other LLM's review:**
+    * **"7 arguments → `target` spills to the stack on every call; 6 keeps the recursion purely in registers":** the ABI part is right. System V x86-64 passes the first **6** integer/pointer arguments in registers, and a member function's hidden `this` takes one of them. But "purely in registers" is wrong: every call still pushes a return address and saves callee-saved registers to the stack. Measured (member function, 100 candidates with 10 copies each of 1–10, target 30, 37,155 calls): **7 args 0.27 ms vs 6 args 0.24 ms**, about **1 ns per call**. That's real but tiny, and it can't be separated from the 6-arg version also doing one less add per check. Dropping the parameter is worth it for **clarity** (one less thing to pass around). The register count is a side benefit, not the reason. (My file is a free function, so it's 5 args, or 6 counting `this` on LeetCode.)
+    * **"Subsets II is the exact same code":** yes, minus the sum, with every node recorded as an answer. That's next.
+
+* **Time & Space Complexity:** **O(n log n)** to sort + **O(2ⁿ · n)** worst case (every subset explored, each recorded answer copied in O(n)). The prune and the duplicate skip cut it far below that in practice. **O(n)** auxiliary (depth ≤ n + `tempVector`), plus the output.
