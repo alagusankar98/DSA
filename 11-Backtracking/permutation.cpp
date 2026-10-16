@@ -2,17 +2,17 @@ int factorial(int n){
     if(n == 0 || n == 1) return 1;
     return n * factorial(n - 1);
 }
-void permutationHelper(const std::vector<int>& nums, std::vector<std::vector<int>>& resultVector, std::vector<int>& tempVector, std::unordered_set<int> seen){
+void permutationHelper(const std::vector<int>& nums, std::vector<std::vector<int>>& resultVector, std::vector<int>& tempVector, std::unordered_set<size_t>& seen){
     if(tempVector.size() >= nums.size()){
         resultVector.push_back(tempVector);
         return;
     }
 
-    for(const auto num : nums){
-        if(seen.contains(num)) continue;
-        seen.insert(num); tempVector.push_back(num);
+    for(size_t i = 0; i < nums.size(); i++){
+        if(seen.contains(i)) continue;
+        seen.insert(i); tempVector.push_back(nums[i]);
         permutationHelper(nums, resultVector, tempVector, seen);
-        seen.erase(num); tempVector.pop_back();
+        seen.erase(i); tempVector.pop_back();
     }
 }
 std::vector<std::vector<int>> permute(const std::vector<int>& nums) {
@@ -20,7 +20,7 @@ std::vector<std::vector<int>> permute(const std::vector<int>& nums) {
     resultVector.reserve(factorial(std::ssize(nums)));
     std::vector<int> tempVector;
     tempVector.reserve(nums.size());
-    std::unordered_set<int> seen;
+    std::unordered_set<size_t> seen;
     
     permutationHelper(nums, resultVector, tempVector, seen);
 

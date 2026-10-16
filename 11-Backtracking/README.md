@@ -275,3 +275,45 @@ Start from every cell that could begin the path; from each, DFS into neighbours 
     * **"Subsets II is the exact same code":** yes, minus the sum, with every node recorded as an answer. That's next.
 
 * **Time & Space Complexity:** **O(n log n)** to sort + **O(2ⁿ · n)** worst case (every subset explored, each recorded answer copied in O(n)). The prune and the duplicate skip cut it far below that in practice. **O(n)** auxiliary (depth ≤ n + `tempVector`), plus the output.
+
+### [5] Permutations
+
+> First pass `3cf725a`, after nudges only. My first idea was wrong (walk circularly with `i % n`), then it clicked: **the helper is just a `for` loop.** Level 1 loops over all elements, level 2 over all except the one level 1 chose, level 3 over all except the ones chosen above it, and so on. Verified against `std::next_permutation` for n = 1…7: identical output sets.
+
+* **The Core Pattern:** pick any unused element (§1 "Four ways", row 3; §2 Pattern 2). Each level asks **"which number goes in *this position*?"**, not "do I take element `i`?". Loop over **all** of `nums`, skip what's used, then mark, push, recurse, pop, unmark. Leaves are at depth n: 3 × 2 × 1 = 6 for `[1, 2, 3]`.
+    * **Depth comes from `tempVector.size()`**, so no `i` parameter is needed. Every level scans all of `nums`, and the only thing that changes between levels is what's already used.
+
+* **Why the forward-only index had to go.** In Subsets and both Combination Sums, moving only forward existed to **stop** `[1,2]` and `[2,1]` from both appearing. Here they're **different answers**, and both are needed. The rule that prevented duplicates there is exactly what blocks half the answers here. **Self-check (from `[2]`):** does order matter? Yes → loop over everything and keep a `used` record. No → a forward index.
+
+* **My wrong idea: `i % n` (walk around the array circularly).** Starting at each index and wrapping around gives `[1,2,3]`, `[2,3,1]`, `[3,1,2]`. Those are **rotations**, n of them, not n!. It can never produce `[1,3,2]`, because a circular walk can't jump over an element to take a later one first. The "stop when the first number reaches the last" condition was a symptom of the same model.
+
+* **The `seen` array is back, in the right problem.** My first attempt at Subsets `[2]` used one; there it was the wrong tool. Here it's required: "any unused element" means you have to remember what's used. And `seen` is state, so it gets un-chosen alongside `tempVector` (`erase` with `pop_back`).
+
+* **Code notes on `3cf725a`:**
+    * **`seen` is passed by value**, so every call **copies an `unordered_set`**: a fresh bucket array and one heap node per element. The code is still correct (the `erase` is still needed, because the loop reuses this frame's own copy for its next iteration), but the copy is the most expensive thing in the function. Measured:
+        | Version | n = 6 (LeetCode max) | n = 9 |
+        | -- | -- | -- |
+        | mine, `unordered_set` **by value** | 0.26 ms | 223 ms |
+        | `unordered_set` **by `&`** | 0.08 ms | 48 ms |
+        | **bitmask** of used *indices*, passed by value | **0.03 ms** | **19 ms** |
+
+        **By `&` is 3–5× faster than by value. The bitmask is another 2.5×.** Contrast with the `[3]`/`[4]` lesson ("by-value arguments undo themselves"): that's free for an `int`, but not for a container that allocates. By value is fine for a register-sized value; anything that allocates goes by `&` with an explicit undo.
+    * **The bitmask (the embedded answer):** n ≤ 6, so "which indices are used" fits in a **byte**. Test bit `i` to skip, and pass `used | (1u << i)` to the child. It's register-sized, so passing by value is free and there's nothing to undo. No hashing, no allocation. A `std::array<bool, 6>` or `vector<bool>` by `&` works too.
+    * **Key the `used` record by index, not by value.** `seen.contains(num)` only works because the constraints promise **distinct** values. With `[1, 1, 2]`, the second 1 would look "already used" and never get placed. Tracking indices makes the record independent of the values. Permutations with duplicates then also needs the sort-and-skip-twins trick from `[4]`.
+    * `factorial` for `reserve` is fine at n ≤ 6 (and the `reserve` itself matters little, as measured in `[2]`). `tempVector.reserve(n)` is the one that pays.
+    * `tempVector.size() >= nums.size()`: `==` is exact, since it grows by one per level.
+
+* **Follow-up (working tree):** `seen` is now passed by `&` and holds **indices** (`unordered_set<size_t>`). Still verified against `next_permutation`.
+* **Q&A: could I drop `tempVector` and rebuild the permutation from `seen` at the leaf?** I started down that road, then stopped, because `unordered_set` doesn't preserve insertion order. Right call, and the deeper reason: **a permutation *is* an order**. Any set only answers "is it in?": `unordered_set` has no order, and `std::set` sorts by key, which throws away the order of choice. The order of choice is the answer, and `tempVector` is exactly that record (the path). `seen` is only an index for fast "already used?" lookups. Two jobs, two structures.
+* **Q&A: doesn't a `uint64_t` bitmask cap n at 64?** Yes, and it doesn't matter, because the **output** runs out long before the bits do. Each permutation stored in a `vector<int>` costs about `24 + 4n` bytes:
+    | n | permutations | output size |
+    | -- | -- | -- |
+    | 10 | 3.6 million | 0.23 GB |
+    | 12 | 479 million | 35 GB |
+    | 13 | 6.2 billion | 473 GB |
+    | 20 | 2.4 × 10¹⁸ | 2.5 × 10¹¹ GB |
+
+    Even a `uint16_t` mask outlives any n you could print. **The general rule:** a bitmask's width only becomes the real limit when the search is *pruned* or *counts* instead of listing everything (for example, counting N-Queens solutions without storing the boards). Then use `std::bitset<N>` or `vector<bool>`. Either way, an `assert(n <= 64)` documents the assumption in one line, the kind of guard an embedded reviewer looks for.
+* **Another approach worth knowing: swap in place.** Fix position `k` by swapping each of `nums[k…n−1]` into slot `k`, recurse on `k + 1`, then swap back. No `seen` at all and no separate `tempVector`: the array itself is the path, and swap-back is the un-choose step. It needs a mutable copy of `nums`.
+
+* **Time & Space Complexity:** **n!** leaves, each copied in O(n). The internal nodes add up to about **e · n!** (≈ 2.72 · n!), each doing an O(n) scan. So **O(n · n!)** time. **O(n)** auxiliary space (depth n, `tempVector`, the used record), plus **O(n · n!)** for the output.
