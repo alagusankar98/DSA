@@ -348,3 +348,29 @@ Start from every cell that could begin the path; from each, DFS into neighbours 
 * **Code notes on `09163f7`:** the bounds check comes before `nums[i + 1]` in the `while` (the `[4]` lesson held). `tempVector.reserve(n)` is the one that pays. The sorted copy keeps the input `const`. Nothing to fix.
 
 * **Time & Space Complexity:** **O(n log n)** sort + **O(n · 2ⁿ)** worst case (all distinct). With duplicates, the leaves are **∏ (kᵥ + 1)** and each is copied in O(n). **O(n)** auxiliary, plus the output.
+
+### [7] Generate Parentheses
+
+> A real wall. I couldn't generate ideas, and even with nudges my brain "wasn't braining". I looked at the solution, corrected my code (`255e14a`), and only *then* understood it by tracing n = 3 by hand. My trace was right; I just didn't trust it. The fix that made it pass was one comparison: `close < n` → `close < open`. Verified for n = 1…10: every string valid, no duplicates, and the counts are exactly the Catalan numbers (1, 2, 5, 14, 42, …, 16,796).
+
+* **The Core Pattern:** constraint building (§2 Pattern 4). It's a two-way tree like take/skip, but **both** branches add a character: `(` or `)`. Instead of building strings and checking them afterwards, put a **gate in front of each branch**, so an invalid string never gets built:
+    * **Branch A, add `(`:** allowed only if `open < n` (there are only n opens to spend).
+    * **Branch B, add `)`:** allowed only if `close < open` (there must be an unclosed `(` *right now*).
+    * **Base case:** length `2n` → record. Because every move was legal, every full-length string is valid. Nothing is checked at the end.
+
+* **Where I was stuck, and how each one resolved:**
+    * **"Record when open == close."** That accepts `""` at the start, `()` before it's long enough, and `)(` / `))((`, which have equal counts but are invalid. Equal counts **at the end** isn't validity. Validity is a property of **every prefix**.
+    * **"When do I clear `tempString`?"** Never. Each branch is its own matched pair: push `(` → recurse → pop, then push `)` → recurse → pop. After A's pop, the string is exactly what this call received, so B starts clean. It's the Subsets `[2]` invariant ("every call hands the string back unchanged"). The difference is that in Subsets only take pushed; here both branches do.
+    * **"A single `i ≥ n` base case."** One counter can't express this. You need **two** counts: `open` gates A, and `close` *compared with `open`* gates B. They aren't base cases that `return`; they're conditions on whether a branch runs at all.
+    * **`close < n` vs `close < open` (the bug).** `close < n` only limits the **total** number of `)`. It never asks whether this `)` has a `(` to match. With n = 1 it builds `)(`. With n = 3 it gives **20** strings instead of 5, and its first three answers are the same as the correct ones, which is why it looked right at first. The first difference is at `(())` (open 2, close 2): `close < open` blocks it (nothing left to close), but `close < n` allows it and builds `(()))(`.
+    * **"Why does it unwind 'three levels'?"** Each `)` in `((()))` was pushed by a **different** call, so each call pops its own on the way out. Then the call at `((` pops its branch-A `(` and runs its own branch B → `(()` → … → `(()())`. That's the second answer, exactly as I traced it.
+
+* **The link to Valid Parentheses (Stack topic):** `open − close` is **the depth of the stack** at that moment. `close < open` is "the stack isn't empty, so a `)` has something to pop". `open < n` caps the pushes. The final length check plus the gates means it ends with depth 0. This problem is Valid Parentheses run in reverse: instead of checking a string with a stack, generate only strings whose stack never underflows.
+
+* **Code notes on `255e14a`:**
+    * **`open == close &&` in the base case is redundant.** At length `2n`, the gates guarantee `open ≤ n` and `close ≤ open`, and `open + close = 2n`, so `open = close = n`. Harmless, but it suggests the end check is doing work when the gates already did it.
+    * **`tempString.size() == 2 * n` compares `size_t` with `int`.** `-Wall -Wextra` warns `-Wsign-compare`. Equivalent check with no signedness mix: `open + close == 2 * n` (both `int`), or `static_cast<size_t>(2 * n)`.
+    * `tempString.reserve(2 * n)` once: the string never grows past it.
+    * `close < n` can be dropped entirely, not just replaced: `close < open ≤ n` already implies it.
+
+* **Time & Space Complexity:** the number of answers is the **n-th Catalan number** `Cₙ = (2n choose n) / (n + 1)`, which grows like **4ⁿ / (n^1.5 · √π)**. Each answer is copied in O(n), so the time is **O(4ⁿ / √n)**. Thanks to the gates, there are no dead branches: every path leads to a valid answer. **O(n)** auxiliary (depth 2n + the string), plus the output.
