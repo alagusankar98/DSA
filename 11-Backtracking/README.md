@@ -374,3 +374,42 @@ Start from every cell that could begin the path; from each, DFS into neighbours 
     * `close < n` can be dropped entirely, not just replaced: `close < open ≤ n` already implies it.
 
 * **Time & Space Complexity:** the number of answers is the **n-th Catalan number** `Cₙ = (2n choose n) / (n + 1)`, which grows like **4ⁿ / (n^1.5 · √π)**. Each answer is copied in O(n), so the time is **O(4ⁿ / √n)**. Thanks to the gates, there are no dead branches: every path leads to a valid answer. **O(n)** auxiliary (depth 2n + the string), plus the output.
+
+### [8] Palindrome Partitioning
+
+> **Three days.** The longest wall of the topic. First pass `ca670dd`. I started from the wrong model (include/exclude, which builds *subsequences*), went through two broken versions, and needed three explanations of the loop shape before it landed. Then I spent more time on one C++ detail: getting a `std::string` out of a `string_view` substring. Verified against a brute force (every set of cut positions) on 3,000 random strings: 0 mismatches.
+
+* **The Core Pattern:** loop from `start` (§2 Pattern 1's shape) where each call asks **"how long is the next piece?"** The tape left is `s[start …]`. Loop `end` from `start` to the last index. The piece is `s[start … end]`. If it's a palindrome: push, recurse with `end + 1`, pop. If not: skip it (no subtree). Base case `start == s.size()`: the tape is empty, and every piece was checked when it was cut, so record.
+
+* **Mental model: snapping pieces off a strip of tape.** Each level snaps one piece off the **front** and hands the rest down. The full walk for `"aab"`:
+    | Level | Tape left | Tries | Kept? | Then |
+    | -- | -- | -- | -- | -- |
+    | 1 | `aab` | `a` | ✔ | level 2 with `ab` |
+    | 2 | `ab` | `a` | ✔ | level 3 with `b` |
+    | 3 | `b` | `b` | ✔ | empty → **record `[a,a,b]`** |
+    | 2 | `ab` | `ab` | ✗ | skip |
+    | 1 | `aab` | `aa` | ✔ | level 2 with `b` |
+    | 2 | `b` | `b` | ✔ | empty → **record `[aa,b]`** |
+    | 1 | `aab` | `aab` | ✗ | skip, done |
+
+* **A partition is a choice of cuts.** `"aab"` has 2 gaps, `a ▢ a ▢ b`, and each gap is cut or not: 2ⁿ⁻¹ = 4 partitions in total, of which 2 are all-palindrome. So my binary instinct wasn't wrong, but the yes/no question is **"cut after this character?"**, never **"include this character?"**. Every character always stays.
+
+* **The three wrong versions, and what each taught:**
+    1. **Include / exclude (the Subsets tree).** Excluding a character **throws it away**: `"abcd"` minus `b` and `d` is `"ac"`. That's a subsequence, not a partition. Lesson: in a partition, nothing is ever skipped. The only decision is where the boundaries go.
+    2. **Two calls with a shared `tempString` + `isPalindrome` at the top + `tempVector.clear()` in the base case.** Three bugs: (a) `ab` was rejected before it could grow into `aba`, so a growing piece may be non-palindromic *until* it's sealed; (b) the second call popped `s[i]` and moved on, which threw the character away again; (c) `clear()` deleted pieces that the calls above still owned. Lesson: never clear shared state. Pop exactly what you pushed.
+    3. **The loop, but driven by a shared `tempString` and the parameter `i` itself.** Output: `"aab" → [b]`, `"aba" → [a,aa] [a]`. The piece never **grew** inside the loop (push `s[i]`, then pop it at the end of the iteration, so it tried `a`, `a`, `b` from three different positions), and the child **inherited** the parent's piece (shared by `&`, so level 2's first piece was `a` + `a`). Root cause: **`i` was doing two jobs**, "where this call's tape starts" and "where the piece ends". Incrementing it lost the start. *Fix:* a fixed `start` parameter, a separate `end` loop variable, and the piece computed from the two indices, with no `tempString` at all.
+
+* **The C++ detail that cost time: `string_view` → `string`.**
+    * **`string_view::substr` returns another `string_view`**: a pointer + length into the same buffer, so no copy and no allocation. (`std::string::substr` returns a new `std::string`. Same name, different cost.)
+    * **Converting needs an explicit construction:** `std::string piece(view);`, or `tempVector.emplace_back(view)`, which builds the string in place inside the vector. There is **no implicit conversion** from `string_view` to `string`. That's deliberate: a hidden allocation would be easy to miss, so the language makes you write it.
+    * The reverse direction is implicit and free: a `std::string` passed to `isPalindrome(std::string_view)` just becomes a view.
+
+* **Code notes on `ca670dd`:**
+    * **A `std::string` is built for every candidate piece, before the palindrome check**, and `push_back(tempString)` copies it a second time. Check the **view** first, and construct only on success (`emplace_back(piece)`, or `push_back(std::move(tempString))`). Measured: on `"abaabbabaababbab"`, **0.036 → 0.028 ms**. On 16 `a`s (32,768 partitions, every piece valid), there's no difference beyond noise: the run order alone swung timings between 4 and 7 ms. **Why the copy is cheap here:** libstdc++'s **small-string optimization** stores up to **15 characters inside the `string` object itself** (checked: an empty `std::string` reports capacity 15). LeetCode caps `s` at 16 characters, so almost every piece is a stack copy, not a heap allocation. With long pieces, building before checking would allocate for every rejected piece.
+    * **`std::string tempString;` in `partition` is unused.** It's left over from version 3. Delete it.
+    * `isPalindrome(std::string_view)` with two indices moving inward: right, and no allocation. `int` + `std::ssize` keeps `right = −1` safe for an empty view.
+
+* **Follow-up (working tree):** the palindrome check now runs on the **view**, and the `std::string` is built only for pieces that pass. The unused `tempString` is gone. Still 0 mismatches, with clean sanitizers. Two polish points: the same `s.substr(startIdx, i − startIdx + 1)` is written twice, so name it once (`auto piece = s.substr(…);`, which is a free view). And `push_back(std::string(piece))` builds a temporary and then moves it in, while `emplace_back(piece)` builds it directly in the vector's slot. Both are tiny, but the named view is the readability win.
+* **The known follow-up: precompute every palindrome check.** The same `s[i … j]` gets checked again in different branches. A table `isPal[i][j] = s[i] == s[j] && (j − i < 2 || isPal[i+1][j−1])`, filled once in O(n²) (rows from the bottom up, so `isPal[i+1]` is ready), turns each check into a lookup. Measured at n ≤ 16: **no gain** (0.026 ms with or without it), because the output dominates. It matters when n is larger, and it's the first taste of 2-D DP (topic 15), so say it in an interview, but it doesn't change anything here.
+
+* **Time & Space Complexity:** up to **2ⁿ⁻¹** partitions (all of them, for `"aaa…a"`). Each one costs O(n) to check its pieces and O(n) to copy, so **O(n · 2ⁿ)**. **O(n)** auxiliary (depth ≤ n + `tempVector`), plus the output.

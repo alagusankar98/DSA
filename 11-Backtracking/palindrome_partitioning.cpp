@@ -17,9 +17,9 @@ void partitionHelper(std::string_view s, std::vector<std::vector<std::string>>& 
     }
     
     for(size_t i = startIdx; i < s.size(); i++){
-        std::string tempString(s.substr(startIdx, i - startIdx + 1));
-        if(isPalindrome(tempString)) {
-            tempVector.push_back(tempString);
+        auto piece = s.substr(startIdx, i - startIdx + 1);
+        if(isPalindrome(piece)) {
+            tempVector.emplace_back(piece);
             partitionHelper(s, resultVector, tempVector, i + 1);
             tempVector.pop_back();
         }
@@ -28,7 +28,6 @@ void partitionHelper(std::string_view s, std::vector<std::vector<std::string>>& 
 
 std::vector<std::vector<std::string>> partition(std::string_view s) {
     std::vector<std::vector<std::string>> resultVector;
-    std::string tempString;
     std::vector<std::string> tempVector;
     partitionHelper(s, resultVector, tempVector, 0);
     return resultVector;
