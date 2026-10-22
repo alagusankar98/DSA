@@ -447,3 +447,78 @@ Start from every cell that could begin the path; from each, DFS into neighbours 
 * **Measured** (`79797979`, 65,536 answers; this machine is noisy, so compare ratios): **mine ~0.9–1.6 ms**, the cascade with `const&` + array + `emplace_back(...).push_back(ch)` **~0.4–0.7 ms** (about 2.3×). Backtracking 2.4 ms **without** reserving its result vector, and ~0.9 ms with it. Here both walks cost about the same once the output is pre-sized. At LeetCode's limit (n ≤ 4, at most 256 answers), every version runs in a few microseconds.
 
 * **Time & Space Complexity:** **O(n · 4ⁿ)** time (up to 4ⁿ answers, each of length n, built once). Space: the output is **O(n · 4ⁿ)**. The cascade's peak extra memory is the previous level, **O(n · 4ⁿ⁻¹)**. Backtracking's extra memory is **O(n)** (depth + one path).
+
+### [10] N-Queens
+
+> The last Backtracking problem, and the first Hard of the topic. **I designed it myself** after one round of nudges, and committed the first pass to the working tree. My first validity checker assumed a full board. Once the design was "check each queen as it's placed", I trimmed it down to what can actually conflict. A chain of small bugs followed (below), each one found and fixed by me. Verified for n = 1…9: exactly 1, 0, 0, 2, 10, 4, 40, 92, 352 boards, every one valid (no shared row, column or diagonal), and identical to an independent implementation.
+
+* **The Core Pattern:** constraint building (§2 Pattern 4). **One queen per row, and the depth is the row.** Level `r` tries each column: if the square is safe, place, recurse to `r + 1`, remove. A full board (`r == n`) is a solution, because every queen was checked when it was placed.
+
+* **Trimming the checker (my reasoning, and it's right):**
+    * **No row check:** each level places exactly one queen in its own row, so two queens can never share a row.
+    * **No downward checks:** rows below `r` are empty when row `r` is being placed. Only the column **above**, the up-left diagonal and the up-right diagonal can hold a queen.
+    * **The row isn't on the board yet:** I append the row only *after* the check passes, so during the check `board.size() == rowIdx`, and the checker must never index `board[rowIdx]`. All three scans start at `rowIdx − 1`.
+
+* **The diagonal loops:** the comma operator lets one `for` carry two variables: `for (int i = r − 1, j = c − 1; i >= 0 && j >= 0; i--, j--)`. Getting the start and stop right for both diagonals only resolved **on paper**. Up-left stops when the row **or** the column hits 0. Up-right stops when the row hits 0 or the column hits the **width**.
+
+* **The bugs, in order:**
+    1. **Up-right bound `j < board.size()`:** my board grows **row by row**, so `board.size()` is the number of rows placed so far, not the width. The two only agree on a full square board. *Fix:* `board[0].size()`. Is that safe? Yes: `&&` evaluates left to right and stops early, so `i >= 0` (i.e. `rowIdx ≥ 1`) is checked first, which guarantees at least one row exists. **Cleaner:** pass `n` and test `j < n`. That needs no reasoning about short-circuiting, and it also removes the `-Wsign-compare` warning (`int` vs `size_t`) the current line triggers.
+    2. **Result type `vector<vector<vector<string>>>`:** one board is a `vector<string>` (one string per row), so the result, a list of boards, is `vector<vector<string>>`. *Self-check:* write down the type of **one** answer first, then wrap it in one `vector`.
+    3. **Next row started at `colIdx` instead of 0:** a queen in row `r + 1` could then never sit in a column to the **left** of row `r`'s queen. **This is the same bug as Letter Combinations `[9]`** (passing `j` instead of `0` to the next digit). The rule, twice now: **a new level starts its own choices from scratch.** Only state that genuinely carries over (the board, the path) gets passed down.
+    4. *(C++ detail)* `std::string(n, '.')` is the "n copies of a char" constructor. `currentBoard.emplace_back(n, '.')` builds the row **in place** inside the vector from those same arguments, with no temporary, then `back()[colIdx] = 'Q'`. With n ≤ 9 the row fits in the small-string buffer (≤ 15 characters, `[8]`), so each row costs no heap allocation.
+
+* **Version 2 (working tree): a loop over columns.** The `colIdx + 1` second call became `for (c = 0; c < n; ++c)`: if safe, push the row with `'Q'` at `c`, recurse `r + 1`, pop. One parameter fewer, and each row's loop starts at column 0 by construction (bug 3 can't happen any more). Correct for n = 1…9. Two leftovers: `size_t i < n` compares unsigned with `int` (`-Wsign-compare`; make `i` an `int`), and `isQueenPositionValid(board, rowIdx, i)` now passes `size_t` into an `int` parameter.
+
+* **The search, traced on n = 4** (what "backtrack" actually does here):
+    * Row 0 → col 0. Row 1: col 0 ✗ (column), col 1 ✗ (diagonal), **col 2** ✔.
+    * Row 2: every column is attacked → **dead end**. Return to row 1, remove its queen, and its loop moves on to **col 3** ✔.
+    * Row 2 → col 1 ✔. Row 3: all ✗ → back to row 2, nothing else fits → back to row 1, out of columns → back to **row 0**, whose loop moves to **col 1**.
+    * Row 1 → col 3, row 2 → col 0, row 3 → col 2 → **first solution** `.Q.. / ...Q / Q... / ..Q.`
+    * **Mental model:** a row that runs out of columns just returns. The row above then slides its queen one column right and tries again. Nothing else needs undoing beyond popping that one row.
+
+* **Measured, all three versions:**
+    | Version | n = 9 calls | n = 9 time | n = 12 calls | n = 12 time |
+    | -- | -- | -- | -- | -- |
+    | v1: two calls (`r + 1` / `c + 1`), O(n) scan per check | 80,772 | 0.86 ms | 10,960,057 | 112 ms |
+    | **v2: loop over columns, O(n) scan per check** | **8,394** | **~1 ms** | **856,189** | **~117 ms** |
+    | loop over columns + **line flags**, O(1) per check | 8,394 | 0.28 ms | 856,189 | 41 ms |
+    * **The surprise:** the loop cut calls **10×**, but the time **didn't move**. So the calls were never the bottleneck. **The scanning is:** every square tried walks up to three lines of the board. With the call count now minimal, the remaining cost is the O(n) check, and only a faster check removes it. *Lesson:* measure before assuming which part is slow. Fewer calls felt like the fix, and it wasn't.
+
+* **Three ways to answer "is this square attacked?", and where each pays:**
+    | Approach | Check a square | Place / remove a queen |
+    | -- | -- | -- |
+    | Scan the board (v1, v2) | O(n): walk up to 3 lines | O(1) |
+    | **Count per cell** (how many queens attack it) | O(1): one lookup | O(n): +1 / −1 on every cell the queen attacks, ~3n cells |
+    | **Flag per line** | **O(1): 3 lookups** | **O(1): 3 writes** |
+
+    My "temp board of invalid cells" idea fails with plain true/false marks, because **cells overlap**: one cell can be attacked by two queens, so un-marking it for one queen wrongly frees it from the other. **Counts** fix that (it's reference counting), but they move the cost to placing. Checks are far more frequent than placements (up to n checks per row), so counts beat scanning only somewhat. **Flags per line** make both operations O(1).
+
+* **Line flags from scratch (the approach to implement):** a queen doesn't really attack *cells*. It attacks **three lines**: its column, its `\` diagonal and its `/` diagonal. Give each line a number and one flag.
+    * **Columns:** column `c` is line `c`, giving `n` flags.
+    * **`\` diagonals:** write `r − c` in every cell (n = 4):
+      ```text
+       0 -1 -2 -3
+       1  0 -1 -2
+       2  1  0 -1
+       3  2  1  0
+      ```
+      Each `\` diagonal carries **one number all the way along**. The range is −(n−1) … n−1, so add `n − 1` to index it, giving **2n − 1** flags.
+    * **`/` diagonals:** write `r + c`:
+      ```text
+       0 1 2 3
+       1 2 3 4
+       2 3 4 5
+       3 4 5 6
+      ```
+      Again one number per diagonal, already 0 … 2n − 2, giving **2n − 1** flags.
+    * **Safe check:** `!col[c] && !diagDown[r − c + n − 1] && !diagUp[r + c]`. **Place:** set those three (and `'Q'`). **Remove:** clear the same three (and `'.'`).
+    * **Check it against the trace:** the queen at (1, 2) has `r + c = 3`. Square (2, 1) also has `r + c = 3`, so it's attacked, which is exactly why row 2, col 1 failed above.
+    * **Why clearing is safe for lines but not for cells:** on a valid board, no two queens share a column or a diagonal. So each set flag belongs to **exactly one** queen, and clearing it on the way back can't remove another queen's protection.
+    * **What changes in the code:** three `vector<bool>` (or `std::array<bool, …>`) shared by `&` alongside the board. They're set and cleared in the same choose/un-choose pair as `'Q'`/`'.'`, and `isQueenPositionValid` disappears.
+    * **The embedded version, after that works:** n ≤ 9, so each set of flags fits in one integer. Use three bitmasks passed **by value** with `|`, so there's nothing to undo (Permutations `[5]`).
+
+* **Time & Space Complexity:** row `r` has at most `n − r` free columns, so the search is bounded by **O(n!)** placements. Each check is **O(n)** with scanning (so O(n · n!), measured as the dominant cost) or **O(1)** with flags. Each solution is copied as n strings of n characters, O(n²) per solution. Space: **O(n²)** for the board (n rows of n), O(n) for the flags and recursion depth, plus the output.
+
+---
+
+**Topic complete (10 / 10).** The patterns all came from one tree: take/skip (Subsets, Combination Sum I/II, Subsets II), pick any unused (Permutations), loop from `start` (Palindrome Partitioning), one level per input position (Letter Combinations, N-Queens), and gates/pruning before the recursive call (Generate Parentheses, Combination Sum, N-Queens). Two rules came back again and again: **every choose has an exact un-choose**, and **a new level starts its own choices from scratch.**
