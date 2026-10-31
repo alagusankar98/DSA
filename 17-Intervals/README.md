@@ -130,7 +130,7 @@ Sort the intervals by start and the queries by value (keeping their original ind
 
 ### [1] Insert Interval
 
-> First problem of the topic, picked to get momentum back after 9 days off. It took **about 6 hours**. Getting the first passing version took about 1–2 hours, and the rest went into the review loop: two-pass → flat buffer → write-back → one pass. Commits: `ea17bae` (first pass), `286a5ea` (flat `array` buffer), `cae8a55` (struct + write-back), then the one-pass version. Most of the walls were C++ (references, `emplace_back`), not the algorithm.
+> First problem of the topic, picked to get momentum back after 9 days off. It took **about 6 hours**. Getting the first passing version took about 1–2 hours, and the rest went into the review loop: two-pass → flat buffer → write-back → one pass. Commits: `ea17bae` (first pass), `286a5ea` (flat `array` buffer), `cae8a55` (struct + write-back), `a89c943` (one pass). Most of the walls were C++ (references, `emplace_back`), not the algorithm.
 
 * **The Core Pattern:** the input is **already sorted and disjoint**, so there's no sort: one pass, O(n) (§2 Pattern 2). Every interval falls into one of three groups relative to the new one:
     * **Final:** it can't touch the new interval, so copy it unchanged.
@@ -188,3 +188,54 @@ Sort the intervals by start and the queries by value (keeping their original ind
     * **Time O(n):** a single pass, with no sort (the input is already sorted).
     * **Space O(1) extra** beyond the output. The result is `reserve`d to n + 1 once.
     * **The output still costs n + 1 heap allocations** because of the `vector<vector<int>>` return type. With a flat `vector<Interval>`, it would be one allocation (measured: ~40× faster).
+
+### [2] Merge Intervals
+
+> Same day as Insert Interval, and the payoff for it. I reused Insert Interval's write-back loop unchanged, final flush included, and it passed once I remembered to sort: I forgot the sort on the first run. First pass `fbf7504`. The review then moved the cost from the loop to the **copy and sort before it**, and the flat-copy version followed one round later.
+
+* **The Core Pattern:** sort by start, then one write-back sweep (§2 Pattern 1).
+    * Seed the block with the first interval. For each next interval: if it starts at or before the block's end, widen the end with `max`. Otherwise push the block and start a new one from this interval.
+    * After the loop, flush the last block.
+    * Sorting by start is what makes one pass enough (§1, "Why Sorting Works"). Once an interval starts past the block's end, nothing later can touch the block, so it's final.
+    * Unlike Insert Interval, the input isn't sorted, so the sort is the whole cost: **O(n log n)**.
+
+* **The "Gotcha":**
+    * **Don't forget the sort.** Without it, the sweep's invariant is false, and it silently merges only adjacent overlaps.
+    * **Touching counts as overlap** (`<=`), and **containment needs `max`** on the end. Same as Insert Interval.
+    * **If the input is `const&`, you need a copy before you can sort.** The only decision is what layout that copy uses (below).
+
+* **The Struggle & Insights:**
+    * **What `std::sort` does to `vector<vector<int>>` (my wrong assumption).** I assumed it compares only the first number, and that "even if it sorts the inner vectors too, that's what we want". Both are wrong:
+        * **It's lexicographic.** It compares element 0, and only on a tie element 1. Verified: `[1,4] [1,3] [0,9] [5,2]` → `[0,9] [1,3] [1,4] [5,2]`, so `[1,3]` comes before `[1,4]`.
+        * **It never touches the inside of an element.** `[5,2]` stayed `[5,2]`. `sort` rearranges whole elements, and swapping two inner vectors just swaps their internal pointers. Sorting *inside* an interval would corrupt it (`[5,2]` would become a different interval). It's not a harmless extra.
+    * **Equal starts don't need a tie-break (the second wrong assumption).** I worried that a start-only comparator would break on `[1,3], [1,1]`. A comparator that says neither is smaller tells `sort` they're **equivalent**, so they end up next to each other in some order (`std::sort` isn't stable). Both orders merge to `[1,3]`. **Proof:** two intervals with the same start always overlap, because the second one's start equals the first one's start, which is ≤ the first one's end. So they always merge, and `max` takes the bigger end regardless of order.
+    * **Never "fix" ties with `<=`.** `std::sort` requires a *strict weak ordering*, so `comp(a, a)` must be `false`. A `<=` comparator is **undefined behaviour**: libstdc++'s insertion sort then runs past the end of the array. Verified with 100 equal intervals plus one smaller: `AddressSanitizer: heap-buffer-overflow`. **A comparator always uses `<`.**
+    * **A struct has no `operator<`.** My flat version failed to compile with `no match for 'operator<' (operand types are 'Interval' and 'Interval')`. C++ doesn't invent comparisons for your types. There are two ways to fix it:
+        * **Pass a comparator.** Right when the order belongs to this one use, like "by start" here. Its parameters must be `const&`, or every comparison copies two elements.
+        * **Give the type a natural order.** In C++20, `auto operator<=>(const Interval&) const = default;` generates all six comparisons, lexicographic in member declaration order (verified).
+    * **The real cost was before the loop.** Measured at n = 100k (random starts, 60,752 intervals survive the merge):
+
+        | Version | Heap allocations | Time |
+        | -- | -- | -- |
+        | First pass: deep copy into `vector<vector<int>>`, default sort | 160,754 | ~18.4 ms |
+        | Deep copy, merge into the copy (compaction) | 100,001 | ~12.7 ms |
+        | Sort the caller's input in place | 60,753 | ~11.6 ms |
+        | **Flat `vector<Interval>` copy, sort by start** (final) | 60,754 | **~5.9 ms** |
+
+      The 60k allocations left in every version are the output's inner vectors, which the `vector<vector<int>>` return type forces.
+    * **Why the flat layout sorts faster (it took me two asks).** Real addresses from a run: each nested element is a 24-byte header in the outer buffer, **pointing to** an 8-byte payload in its own 32-byte heap chunk. That's 56 bytes to store 8. A flat `Interval` is 8 bytes, stored back to back. In a sort:
+        1. **Every comparison is two dependent loads instead of one.** The CPU must load the pointer before it can load `start`. In the flat layout, the address is base + 8·i, so one load.
+        2. **Fewer bytes per cache line.** A 64-byte line holds 8 `Interval`s, but only 2⅔ headers, and their ints live on other lines.
+        3. **Cheaper swaps.** Three 64-bit words per swap against one.
+        4. **The sort scatters the nested layout.** It moves the headers around, so neighbouring headers end up pointing far apart. The flat data moves *with* its element, so neighbours stay neighbours.
+
+      Sort-only timing: 7.3 vs 4.65 ms at 100k (1.6×), and **330 vs 112 ms at 2M (2.9×)**. The gap grows as the nested version outgrows the cache. **Correction recorded:** I was told a fragmented heap would make the nested sort even slower. Shuffling which chunk holds which interval measured no difference (7.4 vs 7.3 ms), because point 4 scrambles the access order anyway.
+    * **"If I'm allowed to mutate, isn't the nested sort still the bottleneck?" Yes.** Copying into a flat array first and sorting the copy beats sorting the input in place: 0.3 ms to copy + 4.7 ms to sort = **5.0 ms vs 7.3 ms**. The O(n) copy is one sequential pass, which the prefetcher handles well, and it pays for itself across about 1.7 million comparisons. **The rule:** when an O(n log n) or worse loop is limited by memory access, spend one O(n) pass converting the data into a contiguous layout first. It's the same idea as DMA-ing scattered data into one buffer before processing it. In an interview, say "I'll copy, unless the API says the function owns the input". Quietly reordering the caller's data is a contract question, not a free optimisation.
+    * **The compaction variant and its trap.** Merging into the copy itself, with a write index and a read index and then a truncate (like `std::unique`), reuses the copy's inner vectors for the output. But while nothing has merged yet, the two indices are equal, and **moving an element onto itself empties it**. The review's first version of this segfaulted for exactly that reason. Guard the move whenever the indices can be equal.
+    * **`std::pair<int,int>` vs `struct Interval`.** The speed is identical: same 8 bytes, same layout, 4.78 vs 4.65 ms. `pair` comes with a lexicographic `<`, so the default sort works. But `first`/`second` say nothing (the `front()`/`back()` problem again), and in libstdc++ `pair` is **not trivially copyable** (verified: its assignment operator is user-written). That doesn't matter in a sort, where the copy gets inlined. But it formally rules out raw-byte copying: `memcpy`, `std::bit_cast`, DMA or shared-memory buffers. Use the struct in a systems interview. `pair` is fine for a quick solution.
+    * **A carry-over from Insert Interval:** `reference = intervalsCopy[i]` is a single struct copy. Assigning field by field can fall out of sync if the struct gains a member.
+
+* **Time & Space Complexity:**
+    * **Time O(n log n)** for the sort, plus O(n) for the copy and the sweep.
+    * **Space O(n)** for the flat copy, which is **one allocation**, plus O(log n) stack for introsort, plus the output.
+    * **The output still costs one heap allocation per merged interval,** because of the `vector<vector<int>>` return type.
