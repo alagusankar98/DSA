@@ -126,6 +126,65 @@ Sort the intervals by start and the queries by value (keeping their original ind
 
 ## 3. Problem Strategies & Patterns
 
-*(Entries added one problem at a time as they're solved — same format as the other topic guides: **The Core Pattern**, **The "Gotcha"**, **Time & Space Complexity**, **The Struggle & Insights**.)*
-
 <!-- NeetCode 150 Intervals (6): Insert Interval · Merge Intervals · Non-overlapping Intervals · Meeting Rooms · Meeting Rooms II · Minimum Interval to Include Each Query -->
+
+### [1] Insert Interval
+
+> First problem of the topic, picked to get momentum back after 9 days off. It took **about 6 hours**. Getting the first passing version took about 1–2 hours, and the rest went into the review loop: two-pass → flat buffer → write-back → one pass. Commits: `ea17bae` (first pass), `286a5ea` (flat `array` buffer), `cae8a55` (struct + write-back), then the one-pass version. Most of the walls were C++ (references, `emplace_back`), not the algorithm.
+
+* **The Core Pattern:** the input is **already sorted and disjoint**, so there's no sort: one pass, O(n) (§2 Pattern 2). Every interval falls into one of three groups relative to the new one:
+    * **Final:** it can't touch the new interval, so copy it unchanged.
+    * **Absorbed:** it overlaps, so it widens the block.
+    * **After:** everything once the block has closed, copied unchanged.
+  **The condition for each group must say "can this still change?", not "does this come earlier?"** That one distinction cost hours (see the Struggle below).
+* **My committed design (the hold-back version):**
+    * Phase 1 walks the intervals that **start** before the new one. Each that also **ends** before it is final, so copy it.
+    * The first one that reaches into the new interval is **held back** as the block: its start, and the `max` of the two ends.
+    * Then a write-back merge loop runs over the rest, with a flush at the end.
+    * The block is seeded with the earliest start in its group, so the start never needs correcting, and there's **no `min`**.
+    * The textbook version is equivalent: phase 1 copies the intervals that **end** before the new one starts, phase 2 absorbs with `min` on the start and `max` on the end, phase 3 copies. It's more common in interviews, and either is fine to defend.
+
+* **The "Gotcha":**
+    * **Touching counts as overlap:** `[1,4]` + `[4,5]` → `[1,5]`, so the test is `<=`.
+    * **Containment:** the merged end is `max(a.end, b.end)`, never just the latest end. `[1,10]` absorbing `[2,3]` must stay `[1,10]`.
+    * **The final flush:** after the loop, the last block is still sitting in the locals. Forget to push it and the last interval silently disappears.
+    * **If the block is seeded with the new interval, the start needs `min`.** See "Why `min`?" below.
+
+* **The Struggle & Insights:**
+    * **Stage 1: insert, then merge (two passes).** I inserted the new interval at its sorted position in a scratch vector, then merged. The idea was right, but the code had two bugs:
+        * **The new interval was never appended when it belonged at the end.** The insert loop only inserted when some interval started *after* it. With empty input, this left the vector empty, and `.front()` on an empty vector is undefined behaviour. ASan stayed quiet only because `reserve` had already allocated the memory.
+        * **The merge loop lost track of where the block lived.** It was sometimes already pushed to the result and sometimes still pending, and each of the three branches assumed something different. On LC example 2 this pushed `[3,8]` twice, and on `[3,5],[7,9] + [1,2]` it dropped `[3,5]`.
+        * **The fix:** make **`result.back()` the block**. Seed the result with the first interval. Then each next interval either overlaps `back()` (extend it with `max`) or doesn't (push it). That's two branches and no pending state, and it's the Merge Intervals loop (§2 Pattern 1).
+    * **A reference can't be re-pointed.** `auto& ref = mergeVector.front();` binds to element 0 *forever*. A later `ref = resultVector.back();` doesn't make `ref` refer to `resultVector.back()`. It **copies the value into element 0**. So my "reference" was really a value variable hiding inside the input buffer, which is why some cases passed by luck. The same misconception came back at the end (see the last bullet).
+    * **The review measured the data layout, not the algorithm** (n = 100k, per call):
+
+        | Version | Heap allocations | Bytes | Time |
+        | -- | -- | -- | -- |
+        | two-pass, `vector<vector<int>>` scratch buffer | 100,003 | 5.6 MB | ~2,970 µs |
+        | one pass straight into the result | 100,001 | 3.2 MB | ~2,570 µs |
+        | one pass, flat `vector<array<int,2>>` | **1** | 0.8 MB | **~72 µs** |
+
+      Fixing the algorithm gained about 15%. Fixing the **layout** gained about 40×. Every `vector<int>` holding two ints is a separate `malloc`, behind a 24-byte header (pointer, size, capacity). LeetCode forces the nested signature, so say this out loud in the interview instead. Also from the review:
+        * **A redundant check:** `cur.start >= block.start` is always true after sorting. Writing it showed I didn't trust my own invariant.
+        * **`.front()` / `.back()` read as "first/last element of a container", not "start/end of an interval".** In `result.back().back()`, `back()` meant "last row" on the left and "interval end" on the right. Use `[0]`/`[1]`, or name the fields: `struct Interval { int start, end; }`, or a structured binding `auto [start, end] = arr;` (works for `std::array`, not `std::vector`).
+    * **Q&A: why `emplace_back(a, b)` gave `[b]`.** `resultVector.emplace_back(1, 3)` on a `vector<vector<int>>` built **`vector<int>(1, 3)`, a vector of size 1 filled with 3**, so the start was thrown away. The rule: **parentheses never select the `initializer_list` constructor; braces prefer it.** `emplace_back` forwards its arguments into a parenthesised constructor call, so `(1, 3)` matches `vector(count, value)`. `-Wall -Wextra` gives **no warning**. What I verified, beyond what the other LLM said:
+        * **`emplace_back({1, 3})` fails to compile on every conforming compiler.** A braced list has no type, so the template parameter can't be deduced. It isn't compiler-dependent.
+        * **`emplace_back(std::vector<int>{1, 3})` gains nothing.** It builds a temporary and moves it in, which is what `push_back({1, 3})` already does.
+        * **`vector<array<int,2>>::emplace_back(a, b)` doesn't compile, even in C++20.** `std::array` wraps a nested C array, and parenthesised aggregate init can't reach inside it. `vector<Interval>::emplace_back(a, b)` with a plain struct does work in C++20.
+        * **Rule of thumb:** use `push_back({…})` for aggregates and for "these are the values". Use `emplace_back(args…)` only for real constructor arguments, after checking which constructor they pick. Here both cost one allocation per interval, so `emplace_back` saved nothing anyway.
+    * **Write-through vs write-back (where the block lives).** My first "local" was a **shadow copy**. On every merge I still wrote to `result.back()`, then read the result back into the local. That gave two sources of truth to keep in sync. The fix was to keep the block **only** in locals: merges touch only the locals, and the block goes to the result **once**, when it closes, plus a **flush after the loop**. Trace on `[1,3] [2,5] [4,6] [8,9]`: write-through makes 4 writes and keeps a half-finished interval in the result, while write-back makes exactly 2 writes, both final. I forgot the final flush and found it by debugging, which is the same bug that dropped `[3,5]` in stage 1. It's the ADC-averaging pattern: accumulate in a register, store once per window, flush the partial window at the end. Expect it again in Merge Intervals, run-length encoding and grouping problems. The speed gain here is tiny, and the real value is the clean contract.
+    * **"Ends before", not "starts before".** I wanted phase 1 to copy every interval that starts before the new one. The counterexample: `[[1,5]] + [3,8]` copies `[1,5]` as if it were final and outputs `[1,5] [3,8]`. The right answer is `[1,8]`. An interval can start earlier and still reach into the new one, so "final" has to be tested on the **end**. The same mix-up came back later as a dead `break` (last bullet).
+    * **Why `min`? (the question I asked three times).** In two-pass, the merge loop sees intervals in **start order**. On LC2, `[3,5]` arrives *before* `[4,8]` and **becomes** the block, so the start is 3 from the moment it's loaded, and later intervals only push the end. In one pass, seeding the block with the new interval `[4,8]` lets it **jump ahead of `[3,5]`**. Then `[3,5]` gets *absorbed into* it, and without `min` the 3 is lost: `[4,10]` instead of `[3,10]` (24,367 of 200,000 fuzz cases wrong). Only the first absorbed interval can start earlier, so `min` changes the start at most once, but it's required. My hold-back design avoids the problem instead: it seeds the block from the earliest interval of its group, as two-pass did, so no `min` is needed.
+    * **Pointers, flags and sentinels (the last mile).** To mark "maybe found the held-back interval" I first wrote `std::vector<int>& ref = nullptr;`, which doesn't compile. A reference must bind to an object, can't be null, and can't be re-pointed. "Maybe refers to something, maybe nothing" is a pointer:
+        * declared as `const std::vector<int>* ref = nullptr;` (`const`, because the input is `const&`)
+        * assigned with `ref = &intervals[i];`
+        * read with `(*ref)[0]`, with the parentheses, because `[]` binds tighter than `*`
+
+      The same draft also had a **dead `break`**: it tested `start >= new.start` inside a loop that only runs while `start < new.start`. The test I meant was on the **end**, the same mix-up again. I dropped the pointer and used a copied `vector` checked with `.empty()` (a heap allocation used as a flag), then an `INT_MIN` sentinel (only safe because the input values can't be negative). Finally it clicked: **make the default value of the block the "not found" answer.** Seed the block with the new interval, and overwrite it only if a held-back interval exists. Then no flag, no sentinel and no post-loop `if` are needed.
+    * **Process lesson:** a correct solution existed by hour two. The other four hours went to constant factors I'd measured at about 15%. Learn from the review, but time-box it, and turn leftover polish into notes like this one.
+    * **Known leftover, not taken:** after the block closes, my loop still runs every remaining interval through the block: one comparison and a copy each, then a push. It's correct, because the remaining intervals are disjoint so nothing merges. A separate phase-3 copy would say "nothing after this can change" more directly.
+
+* **Time & Space Complexity:**
+    * **Time O(n):** a single pass, with no sort (the input is already sorted).
+    * **Space O(1) extra** beyond the output. The result is `reserve`d to n + 1 once.
+    * **The output still costs n + 1 heap allocations** because of the `vector<vector<int>>` return type. With a flat `vector<Interval>`, it would be one allocation (measured: ~40× faster).

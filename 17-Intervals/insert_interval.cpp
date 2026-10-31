@@ -3,34 +3,30 @@ struct Interval {
     int end;
 };
 std::vector<std::vector<int>> insert(const std::vector<std::vector<int>>& intervals, const std::vector<int>& newInterval) {
-    std::vector<Interval> mergeVector;
-    mergeVector.reserve(intervals.size() + 1);
+    std::vector<std::vector<int>> resultVector;
+    resultVector.reserve(intervals.size() + 1);
+    std::size_t n = intervals.size();
 
-    bool insertionDone = false;
-
-    for(const auto& currentInterval : intervals){
-        if(!insertionDone && (newInterval[0] < currentInterval[0])){
-            mergeVector.emplace_back(newInterval[0], newInterval[1]);
-            insertionDone = true;
+    // Copy elements that are unaffected
+    std::size_t i = 0;
+    Interval reference = {newInterval[0], newInterval[1]};
+    while((i < n) && (intervals[i][0] < newInterval[0])){
+        // Exit on overlap
+        if(newInterval[0] <= intervals[i][1]){
+            reference = {intervals[i][0], std::max(reference.end, intervals[i][1])};
+            break;
         }
-        mergeVector.emplace_back(currentInterval[0], currentInterval[1]);
+        resultVector.push_back(intervals[i]);
+        i++;
     }
 
-    if(!insertionDone) mergeVector.emplace_back(newInterval[0], newInterval[1]);
-
-    // Merge overlaps
-    std::vector<std::vector<int>> resultVector;
-    resultVector.reserve(mergeVector.size());
-
-    Interval reference = mergeVector[0];
-
-    for(std::size_t i = 1; i < mergeVector.size(); i++){
-        if(mergeVector[i].start <= reference.end){
+    for(; i < n; i++){
+        if(intervals[i][0] <= reference.end){
             // We have an overlap
-            reference.end = std::max(mergeVector[i].end, reference.end);
+            reference.end = std::max(intervals[i][1], reference.end);
         } else {
             resultVector.push_back({reference.start, reference.end});
-            reference = mergeVector[i];
+            reference = {intervals[i][0], intervals[i][1]};
         }
     }
 
