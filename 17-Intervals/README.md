@@ -239,3 +239,38 @@ Sort the intervals by start and the queries by value (keeping their original ind
     * **Time O(n log n)** for the sort, plus O(n) for the copy and the sweep.
     * **Space O(n)** for the flat copy, which is **one allocation**, plus O(log n) stack for introsort, plus the output.
     * **The output still costs one heap allocation per merged interval,** because of the `vector<vector<int>>` return type.
+
+### [3] Non-overlapping Intervals
+
+> Third problem of the day. I started by building intuition rather than code, and two wrong models came first. First pass `23871ae` (sort by start + `min`), then the sort-by-end version after the review.
+
+* **The Core Pattern:** the activity-selection greedy (§1, "Sort by Start or Sort by End?"; §2 Pattern 3). Minimum removals = n − maximum number you can keep without overlaps.
+    * **Sort by end.** Keep a single `int`: the **end of the last kept interval**.
+    * For each next interval: if it starts before that boundary, it collides, so **drop it and count it**. Otherwise keep it, and the boundary becomes its end.
+    * Because of the sort, the kept interval is always the one that ends first. So the only decision on a collision is "drop the newcomer". There's no `min`.
+    * **The equivalent sort-by-start version:** on a collision, drop whichever **ends later**, so the boundary becomes the `min` of the two ends. It gives the same count and is O(n log n) either way.
+
+* **The "Gotcha":**
+    * **Touching isn't overlapping in this problem.** `[1,2]` and `[2,3]` both stay, so the test is a strict `<`. That's the opposite of Merge and Insert Intervals, which used `<=` (§1, "Touching Endpoints").
+    * **Compare against the last kept interval, not the previous element.** See the first stumble below.
+    * **The boundary moves only when you keep something.** That's the `else` branch, and it's required.
+
+* **The Struggle & Insights:**
+    * **Wrong model 1: check each interval against the previous element.** On LeetCode example 1 (sorted: `[1,2] [1,3] [2,3] [3,4]`), it counts `[1,3]` vs `[2,3]` as a second collision and returns 2 instead of 1. But `[1,3]` had already been removed, and a removed interval can't conflict with anything. **Every comparison is against the interval still standing.**
+    * **Wrong model 2: count the collision, but never choose a winner.** I always dropped the newcomer and kept the original. On `[1,100] [2,3] [4,5] [6,7] [8,200]` that gives 4 instead of 1, because `[1,100]` swallows everything, and it was wrong on 8,142 of 100,000 fuzz cases. My own question pointed at the fix: *"If I start with `[1,100]` and then see smaller intervals, won't I miss the others?"* Yes, unless the kept interval can be **replaced**. On a collision, drop the one that **ends later**, so the boundary can **shrink**: `[2,3]` replaces `[1,100]`, the boundary drops from 100 to 3, and the next three intervals fit.
+    * **Why "drop the later end" is always safe (the exchange argument).** Every later interval starts at or after both colliding intervals, because of the sort. Any future interval that fits after the later-ending one also fits after the earlier-ending one. So the earlier end **never blocks more of the future**, and keeping it can't cost anything.
+    * **Deleting invariants the sort already guarantees (three times in one problem):**
+        1. **`cur.start >= kept.start` is always true** after sorting by start. It's the same dead check as Insert Interval's first pass.
+        2. **The kept interval's start is never used,** so the "reference interval" was really just an `int` boundary. After `end = min(...)` it could even be an interval that isn't in the input: the dropped interval's start glued to the kept one's end, e.g. `{1, 3}` from `[1,100]` + `[2,3]`.
+        3. **After switching to sort by end, the `min` is dead.** Every later interval ends at or after the kept one, so `min` always returns the boundary unchanged.
+    * **I over-deleted once.** Along with the `min`, I commented out the `else` assignment, so the boundary was frozen at the first interval's end. On `[1,2] [2,4] [3,5]`, `[3,5]` was then compared against `[1,2]` instead of `[2,4]`, giving 0 instead of 1. **Two branches, two jobs:** a collision means drop and count, with the boundary unchanged. A fit means keep, and **the boundary becomes the kept interval's end**.
+    * **The review (n = 100k at LeetCode's limits, many equal starts):**
+        * **`reserve` the copy.** Without it, the copy reallocates 18 times while growing, for 2.1 MB of heap traffic instead of 0.8 MB in one allocation. The time hardly changes for 8-byte pairs, but leaving out `reserve` on a buffer whose size you know reads as careless.
+        * **Compare one field, not the default `pair` order.** The default `pair` `<` breaks ties on the second field, which is extra comparisons for an order the algorithm never uses. A one-field `const&` comparator measured ~10% faster on tie-heavy input.
+        * **Sort by end vs sort by start measured within ~5% of each other.** The value of sort-by-end is the simpler loop and the equivalence argument, not the speed.
+    * **`pair` is acceptable here,** since `.first` and `.second` are each read in only one place. In longer code, use the struct from Merge Intervals `[2]` for named fields.
+
+* **Time & Space Complexity:**
+    * **Time O(n log n)** for the sort, plus O(n) for the sweep.
+    * **Space O(n)** for the flat copy (one allocation), plus O(log n) for the sort.
+    * **No output buffer.** The answer is a single `int`, so the copy is the only allocation.
