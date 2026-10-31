@@ -274,3 +274,33 @@ Sort the intervals by start and the queries by value (keeping their original ind
     * **Time O(n log n)** for the sort, plus O(n) for the sweep.
     * **Space O(n)** for the flat copy (one allocation), plus O(log n) for the sort.
     * **No output buffer.** The answer is a single `int`, so the copy is the only allocation.
+
+### [4] Meeting Rooms
+
+> NeetCode calls it "Meeting Schedule" (file `meeting_schedule.cpp`). First pass `e9410d7`, **optimal as written**: the review found nothing to change. Every habit from `[1]`–`[3]` came through without prompting: a flat copy, a `const&` one-field comparator, the boundary as an `int`, and strict `<`.
+
+* **The Core Pattern:** sort, then check each meeting only against the one just before it (§2 Pattern 4). The first conflict returns `false`.
+    * I sorted by **end**. Sorting by **start** works just as well. It's a yes/no question with no choice of what to keep, so unlike `[3]` the sort key doesn't matter.
+
+* **The "Gotcha":**
+    * **Back-to-back meetings are fine:** a meeting ending at 5 and the next starting at 5 don't conflict (half-open intervals). So the test is strict `<`.
+    * **NeetCode's `Interval` is a class with a constructor.** It's 8 bytes and trivially copyable (verified), so copying it is a plain memory copy. It's **not** an aggregate, though, so brace-initialising it calls the constructor rather than filling the fields directly.
+
+* **The Struggle & Insights:**
+    * **Why neighbours are enough (the proof behind the early exit).** Suppose every neighbour check passes. Then each meeting starts at or after the previous one ends, which chains into `s₁ < e₁ ≤ s₂ < e₂ ≤ s₃ < …`. The meetings are laid out end to end in time, so **no pair**, near or far, can overlap. Turned around: if any two meetings overlap, some neighbour check must fail.
+    * **Can you avoid the sort? In general, no.** In the comparison model, deciding whether any two of n intervals overlap is at least as hard as checking n numbers for duplicates (turn each number into a tiny interval), which takes Ω(n log n) comparisons. The early exit skips the rest of the sweep, never the sort.
+    * **With bounded integer times, yes: a difference array.** My first worry was that a meeting `(1, 140)` would mean marking 140 slots. It doesn't:
+        * Write **two** entries per meeting: `+1` at its start and `−1` at its end.
+        * Then make one pass with a running sum. At each time t, the sum is the number of meetings in progress, and a value of 2 means a conflict.
+        * Cost: O(n + T), where T is the size of the time range.
+        * **Touching endpoints cancel automatically:** `[0,5]` and `[5,10]` put −1 and +1 in the same slot. This is the sweep line from §1, with array indices playing the role of the sorted events.
+    * **When the difference array wins, and its sizing traps.**
+        * **It's a space-for-time trade that pays only when T is small** compared with n log n. Minutes in a day is 1,440 slots, 5.6 KB as `int32_t`, which fits in L1. Times up to 10⁶ is 4 MB and a 10⁶-step pass even for 3 meetings, so sorting wins there.
+        * **The slot type must hold ±n.** 200 meetings starting at 9:00 put 200 in one slot, which overflows `int8_t`. Signed overflow is UB, and in practice the count wraps to a wrong value.
+        * **The embedded angle:** a timeline or slot table, like a scheduler's slot map or a histogram over a fixed ADC range. With a small fixed domain, index into it directly. With a large or unbounded one, sort.
+    * **`front()` is fine here:** it means "the first meeting", which is what it says. The earlier complaint was about `front()`/`back()` standing in for an interval's start/end.
+
+* **Time & Space Complexity:**
+    * **Time O(n log n)** for the sort, plus an O(n) sweep that exits early on a conflict.
+    * **Space O(n)** for the copy, which is required because the input is `const&`. It's one allocation, plus O(log n) for the sort.
+    * **The difference-array variant:** O(n + T) time and O(T) space.
