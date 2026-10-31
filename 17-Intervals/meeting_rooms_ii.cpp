@@ -2,7 +2,7 @@ struct Interval {
     int start;
     int end;
 };
-int minMeetingRooms(vector<vector<int>>& intervals) {
+int minMeetingRooms(const std::vector<std::vector<int>>& intervals) {
     if(intervals.empty()) return 0;
     std::vector<Interval> intervalCopy;
     intervalCopy.reserve(intervals.size());
@@ -15,7 +15,6 @@ int minMeetingRooms(vector<vector<int>>& intervals) {
         return a.start < b.start;
     });
 
-    int conflictCount = 1;
     std::priority_queue<int, std::vector<int>, std::greater<int>> meetingEndQueue;
     meetingEndQueue.push(intervalCopy.front().end);
 

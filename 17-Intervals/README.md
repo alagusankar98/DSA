@@ -277,7 +277,7 @@ Sort the intervals by start and the queries by value (keeping their original ind
 
 ### [4] Meeting Rooms
 
-> NeetCode calls it "Meeting Schedule" (file `meeting_schedule.cpp`). First pass `e9410d7`, **optimal as written**: the review found nothing to change. Every habit from `[1]`–`[3]` came through without prompting: a flat copy, a `const&` one-field comparator, the boundary as an `int`, and strict `<`.
+> NeetCode calls it "Meeting Schedule". File `meeting_rooms_i.cpp` (renamed from `meeting_schedule.cpp` in `94a9f27`). First pass `e9410d7`, **optimal as written**: the review found nothing to change. Every habit from `[1]`–`[3]` came through without prompting: a flat copy, a `const&` one-field comparator, the boundary as an `int`, and strict `<`.
 
 * **The Core Pattern:** sort, then check each meeting only against the one just before it (§2 Pattern 4). The first conflict returns `false`.
     * I sorted by **end**. Sorting by **start** works just as well. It's a yes/no question with no choice of what to keep, so unlike `[3]` the sort key doesn't matter.
@@ -304,3 +304,40 @@ Sort the intervals by start and the queries by value (keeping their original ind
     * **Time O(n log n)** for the sort, plus an O(n) sweep that exits early on a conflict.
     * **Space O(n)** for the copy, which is required because the input is `const&`. It's one allocation, plus O(log n) for the sort.
     * **The difference-array variant:** O(n + T) time and O(T) space.
+
+### [5] Meeting Rooms II
+
+> First pass `9f5eb40`, then the cleanup. I diagnosed my own wall before asking: "I'm keeping track of only one room, but a room taken by a very early meeting could go free". Once I knew what state was needed, **I designed the loop myself** and it was correct as described. Then two slips in the code, both caught by me.
+
+* **The Core Pattern:** sort by **start**, then keep a **min-heap of room free times** (§2 Pattern 5).
+    * Seed the heap with the first meeting's end.
+    * For each next meeting: if the room that frees soonest (the heap's top) is free by this meeting's start, **pop it**. Then **always push** this meeting's end.
+    * The answer is the heap's size at the end.
+    * **Mental model:** each heap entry is a **room**, labelled with when it frees up. A pop-then-push isn't "remove a meeting, add a meeting". It's **relabelling the same room**. So the size is the number of rooms ever opened.
+
+* **The "Gotcha":**
+    * **Sort by start, not end. I slipped into end order out of habit from `[3]`/`[4]`.**
+        * Rooms are handed out as time passes, so meetings must be processed **in the order they begin**.
+        * Smallest failing case, in end order: `[2,3] [2,6] [6,9] [5,10]`. Here `[6,9]` is processed first and takes room A (free since 3). But `[5,10]` starts earlier and needed it, so a third room opens (true answer: 2).
+        * End order was wrong on 4,059 of 200,000 fuzz cases. Start order: 0.
+        * **Why it differs from `[3]`:** there you **choose which intervals to keep**, and end order is what makes that choice greedy. Here every meeting must get a room, so you're **simulating time**.
+    * **`std::priority_queue` is a max-heap by default.** A min-heap needs the full template: `std::priority_queue<int, std::vector<int>, std::greater<int>>`.
+    * **Back-to-back meetings share a room,** so the reuse test is `start >= top`.
+    * **`if`, not `while`, is what makes "return the size" correct.** Each meeting does at most one pop and exactly one push, so the size **never shrinks**, and the final size is the peak. A `while` that pops every finished room gives the **current** occupancy instead. That's also a correct algorithm, but then you must track the maximum separately.
+
+* **The Struggle & Insights:**
+    * **Why my first two attempts failed.**
+        * **Counting overlaps** counts colliding *pairs*, not rooms. Three meetings that all overlap each other form 3 pairs, and chains of meetings break the count in other ways.
+        * **Updating one `lastMeetingEnd`** tracks a single room, so it can't see an earlier room becoming free.
+        * **What was missing:** the state is **every busy room's free time**. The only question per meeting is "is the room that frees soonest free yet?" That's a min-heap's top.
+    * **`top()` on an empty heap can't happen, and I should be able to say why.** The heap is seeded with one entry before the loop, and its size never shrinks. An interviewer pointing at `top()` will ask about this.
+    * **The review (n = 100k, at most 135 meetings at once):**
+        * **An unused leftover variable** from the "count overlaps" model, flagged by `-Wunused-variable`. Compile with warnings on, and dead code shows up before a reviewer sees it.
+        * **`const&` instead of LeetCode's non-const stub,** because the input is never modified.
+        * **Don't `reserve` the heap.** That cuts across "always reserve" from `[3]`: its size is bounded by **the answer k**, which you don't know up front. Reserving n would allocate 400 KB to hold 135 entries. It cut allocations from 10 to 2 and changed nothing in time. Reserve buffers whose final size you **know** (the copy), not ones bounded by the result. (`priority_queue` has no `reserve`, but it can be constructed from an already-reserved `vector` moved into it, and it keeps the capacity.)
+        * **The two-sorted-arrays sweep is ~25% *slower* here** (~9.7 vs ~7.7 ms). That version sorts all starts and all ends separately, then walks them with two pointers: a start opens a room, an end frees one, and the peak is the answer. But it does **two** full sorts, while the heap version does **one** sort plus n operations on a heap of ≤ 135 entries, about 7 levels deep and sitting in L1. When nearly every meeting overlaps, the heap grows toward n and the gap closes. **The talking point:** "heap is O(n log k), two arrays is two full sorts, so it depends on how many rooms there are".
+        * **The same answer from the difference array in `[4]`:** the **maximum** running sum is the room count, at O(n + T) for bounded times.
+
+* **Time & Space Complexity:**
+    * **Time O(n log n)** for the sort, plus **O(n log k)** for the heap operations, where k = the number of rooms.
+    * **Space O(n)** for the copy (one allocation), plus **O(k)** for the heap.
