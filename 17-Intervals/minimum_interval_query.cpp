@@ -16,7 +16,9 @@ std::vector<int> minInterval(const std::vector<std::vector<int>>& intervals, con
         return a.start < b.start;
     });
 
-    std::vector<std::pair<int,std::size_t>> queriesCopy;
+    using QueryIndexPair = std::pair<int,std::size_t>;
+
+    std::vector<QueryIndexPair> queriesCopy;
     queriesCopy.reserve(queries.size());
 
     for(std::size_t i = 0; i < queries.size(); i++){
@@ -24,7 +26,7 @@ std::vector<int> minInterval(const std::vector<std::vector<int>>& intervals, con
     }
 
     std::sort(queriesCopy.begin(), queriesCopy.end(),
-    [](const std::pair<int,std::size_t>& a, const std::pair<int,std::size_t>& b){
+    [](const QueryIndexPair& a, const QueryIndexPair& b){
         return a.first < b.first;
     });
     
@@ -33,18 +35,19 @@ std::vector<int> minInterval(const std::vector<std::vector<int>>& intervals, con
     std::vector<int> resultVector(queries.size(), -1); // Initialize all to '-1' to indicate not found. Update only on valid queries
     std::size_t currentIntervalIdx = 0;
 
-    for(auto& [queryVal, queryIdx] : queriesCopy){
+    for(const auto& [queryVal, queryIdx] : queriesCopy){
 
         // Check for push to min queue
         while((currentIntervalIdx < intervalsCopy.size()) && (queryVal >= intervalsCopy[currentIntervalIdx].start)){
+            const auto& interval = intervalsCopy[currentIntervalIdx];
             // First push all intervals that may contain query val before checking for min val
-            minQueue.emplace((intervalsCopy[currentIntervalIdx].end - intervalsCopy[currentIntervalIdx].start + 1), intervalsCopy[currentIntervalIdx].end);
+            minQueue.emplace((interval.end - interval.start + 1), interval.end);
             currentIntervalIdx++;
         }
 
         // Once min queue contains all intervals applicable for current query, proceed to access it
 
-        while(!minQueue.empty() && minQueue.top().second < queryVal) minQueue.pop(); // Discard minQueue entries whose end interval exceeds query value
+        while(!minQueue.empty() && minQueue.top().second < queryVal) minQueue.pop(); // Discard minQueue entries when queryVal is not in range as indicated by its end value
 
         if(!minQueue.empty()){
             // Top element in min heap will now contain the interval that answers query with min distance

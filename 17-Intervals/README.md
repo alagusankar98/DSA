@@ -341,3 +341,47 @@ Sort the intervals by start and the queries by value (keeping their original ind
 * **Time & Space Complexity:**
     * **Time O(n log n)** for the sort, plus **O(n log k)** for the heap operations, where k = the number of rooms.
     * **Space O(n)** for the copy (one allocation), plus **O(k)** for the heap.
+
+### [6] Minimum Interval to Include Each Query
+
+> The topic's only Hard. Built up in layers: a correct but infeasible brute force, a heap I had to *see* working before I trusted it, then a loop driven by the wrong sequence. First pass `9ce9e43`, then the cleanup. The review found nothing measurable to optimize.
+
+* **The Core Pattern:** offline queries + sweep + min-heap with lazy deletion (§1, "Offline Queries"; §2 Pattern 6).
+    * Sort the intervals by start. Sort the queries by value, **keeping each query's original index**.
+    * For each query q in sorted order:
+        * Push every not-yet-pushed interval with `start ≤ q` into a min-heap of **(size, end)**. A forward-only cursor tracks how far you've got.
+        * While the top has `end < q`, pop it.
+        * If the heap isn't empty, its top's size is the answer, written to the query's **original** slot.
+    * **Why the start isn't stored:** an interval enters the heap only once `start ≤ q`, and every later query is larger. So that condition can never fail again, and the only remaining question is "has it ended?".
+
+* **The "Gotcha":**
+    * **The queries drive the loop, and the intervals are a cursor.** The outer loop is over the sequence that **must produce output** (every query needs an answer). Intervals are consumed as needed, by an inner `while (i < n && start <= q)`. When the intervals run out, that `while` just stops pushing, and the heap keeps answering. It's the same guarded forward-only index as Insert Interval's phases.
+    * **Size is inclusive:** `end − start + 1`.
+    * **The result is sized by the *queries*, filled with −1.** `reserve` won't do: it gives capacity with `size() == 0`, and the answers are written in **scattered order** by original index, so the elements must exist up front. Each query is visited once, so its slot is written at most once. An unwritten slot keeps −1, which means "not found", so there's no `else` branch.
+
+* **The Struggle & Insights:**
+    * **The brute force: correct, but 10¹² operations.** My first idea was to map every point covered by an interval to the smallest size covering it, making each query an O(1) lookup. The cost is the **total length** of the intervals: 10⁵ intervals with endpoints up to 10⁷ is up to 10¹² insertions, and the map would take hundreds of MB. (If the range *were* small, the keys are dense integers, so an array would beat `unordered_map`.)
+    * **Why the difference array from `[4]` can't save it:** +1/−1 works for **counts** because a sum can be undone when an interval ends. **A minimum can't be undone.** When the smallest covering interval ends, nothing tells you the next smallest. You have to keep all the candidates, and that's what the heap does.
+    * **"Go back to the first interval containing the next query" was the slow part.** Rescanning earlier intervals is O(n·q) in the worst case: if every interval is `[1, 10⁷]`, that's 10¹⁰ steps. Also, in start order, intervals that have ended are mixed in with ones that haven't, so there's no single position to scan up to. The fix was to **never go back**: every interval already passed sits in the heap.
+    * **Seeing the heap work (my example, worth re-running on a reread).** Intervals `(1,3) (1,4) (1,10) (1,100) (2,3) (2,4) (3,5)`, queries `2, 4, 7, 50, 101` → answers `2, 3, 10, 100, −1`. My three worries, and their answers:
+        * **"Is `(1,100)` guaranteed to come after `(1,10)`?"** It doesn't matter. Equal starts all enter before the query is answered, and the heap orders them by size.
+        * **"I can't lose `(1,100)`."** Nothing is removed unless it's at the top *and* expired. `(1,100)` sits at the bottom, becomes the answer at query 50, and is popped only at query 101.
+        * **"Won't I lose the start?"** It's never needed again (see the Core Pattern).
+
+      **Lazy deletion, made concrete:** stale entries *below* the top are allowed. They're checked only once they surface, so you never search the heap.
+    * **The coding walls:**
+        1. **The push condition was inverted.** I found and fixed it.
+        2. **The loop was driven by intervals, so queries after the last interval start were never answered.** LC1 gave `3 3 −1 −1`.
+        3. **One query was answered per interval, then the current interval was pushed without checking the *next* query.** On `[1,10] [5,5] [6,20]` with queries `2, 3`, `[5,5]` went into the heap before query 3 was answered and answered it (1 instead of 10). The heap only checks ends, so **the "start isn't needed" invariant holds only if nothing is pushed before its start**.
+        4. **More intervals than queries read past the end of `queriesCopy`** (ASan: heap-buffer-overflow). Restructuring around the queries fixed 2–4 at once.
+        5. **`resultVector` was sized by intervals, not queries.** That was the last 12 failing tests: extra trailing −1s when n > q, and an out-of-bounds write when n < q.
+    * **The review (10⁵ intervals and queries, values up to 10⁷):** no change made a measurable difference.
+        * **Reserving the heap** removed 14 reallocations, but they're cheap next to the sorts.
+        * **Packing each query into one `uint64_t`** (value in the top 32 bits, index in the bottom), so the sort is a plain integer sort with no comparator, also measured as noise. It's a neat trick worth knowing.
+        * **`pair<int, size_t>` is 16 bytes, with 4 of them padding** (verified). A `uint32_t` index would make it 8.
+        * **What was left was hygiene:** `const auto&` bindings (no runtime difference, but a stray write becomes a compile error, and the reader can see the loop only reads), a local reference for the current interval, and fixing a comment that described the opposite of the code.
+    * **An alternative to know, not write:** sort the intervals by **size** instead. Each one answers every still-unanswered sorted query inside `[l, r]`: binary-search the first, then skip already-answered queries with a "next unanswered" pointer (union-find, covered in Graphs). Each query is answered once: O(n log n + q log q + n log q).
+
+* **Time & Space Complexity:**
+    * **Time O(n log n + q log q).** The two sorts, plus heap work that is O(n log n) **in total**: each interval is pushed exactly once and popped at most once, however the queries fall. This amortised argument is the interview point, because the nested `while` loops look like O(n·q) and aren't.
+    * **Space O(n + q):** the copies, the heap (up to n entries, stale ones included) and the result.
