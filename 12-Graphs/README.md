@@ -170,3 +170,25 @@ The nodes aren't given. They're **states** (words, board positions), and an edge
 * **Time & Space Complexity:**
     * **Time O(R · C).** Each cell is scanned once, and each land cell is pushed once and checks 4 neighbours. That's optimal: every cell has to be read.
     * **Space O(R · C)** for `seen` (1 byte per cell), plus the container reserved to R · C, all on the heap. At runtime the BFS frontier is only about one diagonal "ring" wide, O(min(R, C)). An iterative DFS's stack can approach R · C. Recursion puts that same R · C on the **call stack**, which is the part that crashes.
+
+### [2] Max Area of Island
+
+> First pass `acc73ca`, **optimal as committed**. I recognised it as Number of Islands `[1]` with one extra number per flood, and reused the final `[1]` version directly: a reserved `vector` with a read cursor, a flat `seen`, a direction array, and marking on push. The review found nothing to fix.
+
+* **The Core Pattern:** grid flood fill (§2 Pattern 1), the "measure each region" variant. The scanner and the flood are the same as in `[1]`. Instead of `count++` per flood, each flood measures its island's size, and the scanner keeps the running `max`.
+    * **What changes from `[1]`:** one counter per flood, reset at the start of each flood and incremented once per cell **processed** (popped or read), then `maxArea = max(maxArea, area)` when the flood ends.
+    * **Why count on read, not on push:** each cell is pushed exactly once and read exactly once, so either spot counts every cell exactly once. Counting on read keeps "one cell processed = +1" together in one place.
+
+* **The "Gotcha":**
+    * **The counter is already there: it's the read cursor.** When the flood ends, `read == bfsVector.size()` == the number of cells pushed in this flood == the island's area. That's because the container is cleared per island and every cell is pushed exactly once. So `currentArea` duplicates `read`. It's harmless (measured: no difference) but redundant, and seeing it shows you understand the container: **the BFS queue's length is the size of the component it just explored.**
+    * **The grid is `int`, not `char`.** It's `vector<vector<int>>` with `0`/`1` values, not `'0'`/`'1'`. Comparing to `'1'` (49) out of habit from `[1]` would find no land at all. My scanner tests `!= 1` while the neighbour check uses truthiness (`grid[r][c]`). That's equivalent for 0/1 input, but pick one form and use it in both places.
+    * **The answer for no land is 0**, which falls out of `maxArea` starting at 0.
+
+* **The Struggle & Insights:**
+    * **The payoff of the `[1]` grind.** Four review rounds on `[1]` (the recursion overflow, the queue per island, the `> 0` bound, the `i * rows` stride) meant this one had none of those bugs on the first pass, including the non-square test: tall and wide grids were both correct.
+    * **Early exit when `maxArea == rows * columns`?** Measured: it saves about 9% on an all-land grid, and costs about 8–10% on a checkerboard (one extra compare per island, with 45,000 islands). It's a wash, so leave it out. The more general prune ("stop scanning when the cells left can't beat `maxArea`") has the same problem: it adds bookkeeping to every scanner step to save work only on rare inputs.
+    * **Mutate or not:** same choice as `[1]`. LeetCode's signature is non-const, so you could overwrite `1` with `0` and drop `seen`. I kept the grid `const&`.
+
+* **Time & Space Complexity:**
+    * **Time O(R · C).** Each cell is scanned once, and each land cell is pushed and read once with 4 neighbour checks.
+    * **Space O(R · C)** for `seen` plus the reserved container, all on the heap. At LeetCode's limit (50 × 50) that's 2,500 bytes plus 20 KB.
