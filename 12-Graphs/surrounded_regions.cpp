@@ -8,15 +8,29 @@ void solve(std::vector<std::vector<char>>& board) {
     bfsVector.reserve(rows * columns);
     std::vector<uint8_t> cannotMark(rows*columns, 0);
 
+    // Left and Right borders
     for(int i = 0; i < rows; i++){
-        for(int j = 0; j < columns; j++){
-            if(i == 0 || j == 0 || i == (rows - 1) || j == (columns - 1)){
-                // Grab all corner cells marked 'O'
-                if(board[i][j] == 'O'){
-                    bfsVector.emplace_back(i, j);
-                    cannotMark[i*columns + j] = 1;
-                }
-            }
+        // [][0] and [][column -1]
+        if(board[i][0] == 'O'){
+            bfsVector.emplace_back(i, 0);
+            cannotMark[i*columns] = 1;
+        }
+        if(board[i][columns-1] == 'O'){
+            bfsVector.emplace_back(i, columns-1);
+            cannotMark[i*columns + (columns - 1)] = 1;
+        }
+    }
+
+    // Top and Bottom borders without start and end element
+    for(int j = 1; j < columns - 1; j++){
+        // [0][j] and [rows - 1][j]
+        if(board[0][j] == 'O'){
+            bfsVector.emplace_back(0, j);
+            cannotMark[j] = 1;
+        }
+        if(board[rows-1][j] == 'O'){
+            bfsVector.emplace_back(rows-1, j);
+            cannotMark[(rows - 1)*columns + j] = 1;
         }
     }
 
