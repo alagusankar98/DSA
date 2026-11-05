@@ -232,3 +232,25 @@ The nodes aren't given. They're **states** (words, board positions), and an edge
 * **Time & Space Complexity:**
     * **Time O(V + E).** Each node is discovered, copied and pushed once, and each directed edge is wired once. That's expected O(1) per edge with the map, guaranteed O(1) with the array.
     * **Space O(V)** for the map or array plus the queue, not counting the clone itself, which is the O(V + E) output.
+
+### [4] Walls and Gates (Islands and Treasure)
+
+> First pass `6c4a1e2` (a separate BFS per gate), then two rounds: accumulate all gates before the loop (`9b5bf08`), then drop the `unordered_set` and let the grid be `visited` (final commit). My initial instinct was to start from every land cell and search outward for the nearest gate. A nudge to flip the direction — start from the gates — was the click. The two rounds after the first pass were about removing redundant state: first `std::min` (unnecessary once the BFS is truly multi-source), then the entire `seen` set.
+
+* **The Core Pattern:** multi-source BFS (§2 Pattern 2). Seed **every** gate (value `0`) into the queue before the loop starts. Then run one BFS. Each level is one more step of distance, and the first time a cell is reached is along a shortest path, so a direct assignment is correct — no `min` needed.
+    * **Why multi-source works:** imagine dropping a stone into water at every gate simultaneously. The ripples expand one step at a time. The first ripple to reach any land cell is, by definition, the shortest distance from that cell to its nearest gate. A second ripple arriving later finds the cell already written and skips it.
+    * **Every reachable cell is covered.** A cell is missed only if it's completely walled off from every gate — which is correct: those cells should stay `INT_MAX`.
+
+* **The "Gotcha":**
+    * **Per-gate BFS is not multi-source BFS.** My first pass looped over every gate and ran a full BFS from each, clearing the queue and `seen` set between gates. That visits cells multiple times (once per gate that can reach them), which forced a `std::min` on every write. True multi-source BFS seeds all sources into the queue *before* the loop, runs *once*, and each cell is dequeued exactly once. The `min` and the per-gate `clear()` both disappear.
+    * **The grid is `visited`.** An unvisited land cell has value `INT_MAX`. The moment it's written (`grid[r][c] = level`), it's no longer `INT_MAX`, so the `== maxVal` check naturally rejects it on future visits. The grid itself is the visited set — no `unordered_set` needed. This is the same insight as Number of Islands' in-place `'1'` → `'0'` overwrite, but here you *must* write (the distance is the output), so it's free.
+    * **Walls (`-1`) and gates (`0`) are excluded by the same check:** neither equals `INT_MAX`, so BFS never enqueues them and never overwrites them.
+
+* **The Struggle & Insights:**
+    * **The original instinct was backwards.** I wanted to start from every INF cell, search outward for the nearest gate, then backtrack updating distances. That's $O((R \cdot C)^2)$ in the worst case: potentially 62,000 cells each launching a full traversal. Flipping the direction — start from gates, expand outward — makes every cell $O(1)$ amortised work.
+    * **"`std::min` is a code smell in BFS."** If you need `min` when writing a distance, it means the same cell can be reached by multiple BFS passes, which means you're running per-source BFS, not multi-source. In a true multi-source BFS, first visit = shortest distance, so it's always a plain assignment.
+    * **Three states, one check.** The grid has three kinds of cells: walls (`-1`), gates (`0`), and land (`INT_MAX` initially, then a distance). The `== INT_MAX` guard handles all three: walls and gates fail it (never enqueued), already-visited land fails it (already written), and unvisited land passes it. One comparison does the work of `!= -1 && != 0 && !seen.contains(…)`.
+
+* **Time & Space Complexity:**
+    * **Time O(R · C).** Every cell is enqueued at most once and checks 4 neighbours. The gate-seeding pass is also O(R · C).
+    * **Space O(R · C)** for the BFS vector (reserved to `rows * columns`). No auxiliary visited structure — the grid is modified in place.
