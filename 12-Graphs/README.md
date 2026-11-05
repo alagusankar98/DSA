@@ -192,3 +192,43 @@ The nodes aren't given. They're **states** (words, board positions), and an edge
 * **Time & Space Complexity:**
     * **Time O(R · C).** Each cell is scanned once, and each land cell is pushed and read once with 4 neighbour checks.
     * **Space O(R · C)** for `seen` plus the reserved container, all on the heap. At LeetCode's limit (50 × 50) that's 2,500 bytes plus 20 KB.
+
+### [3] Clone Graph
+
+> First pass `302c8a4`, after a lot of mental gymnastics. Then three rounds: drop `seen` and look the root up in the map, then a local map with one `try_emplace` (`3d2d03a` → `1e95c02`), then the array indexed by `val` (final commit). My two confusions going in: **where** to create a copy (after popping, or while scanning neighbours?), and **how to keep track of the root**. I hit one bug on the way, a node processed twice, and found the fix myself after an LLM hint.
+
+* **The Core Pattern:** traverse the original (BFS here) while keeping an **original → copy map** (§2 Pattern 4). The map does three jobs at once:
+    * **It's `visited`.** A node is in the map ⇔ its copy exists ⇔ it has been discovered. One fact, stored once.
+    * **It's the creation point.** A copy is created the **first time a node is discovered, whoever discovers it**: the root by you, every other node as somebody's neighbour. "After popping or during the neighbour loop?" has one answer: **at discovery**, and the map is what tells you it's a discovery.
+    * **It's the wiring table.** When node A's copy needs its neighbour B, `map[B]` gives B's copy whether B is new or was discovered long ago. Every edge is wired once, from the node being processed, so each copy's `neighbors` comes out in the original order.
+    * **The root:** its copy is the first one created, and it never moves, so hold the pointer (or look it up at the end). The linked-list **dummy node** solves a different problem, a head that isn't known until the first append or that can change. Neither happens here, so no dummy is needed.
+
+* **The "Gotcha":**
+    * **Mark when you push, not when you pop.** This was my bug: `seen` was inserted on pop. A node sitting in the queue isn't processed yet, but it **is discovered**. If 10 nodes are queued and none is marked until it's popped, every other node pointing at one of them pushes it again. In Clone Graph a duplicate pop isn't just wasted work: that copy's `neighbors` gets **appended twice**, so the clone is wrong. It's the same rule as `[1]`, on a different data structure. Whenever several producers can feed the same item into a container before the consumer reaches it, mark at the producer.
+    * **Working state must not outlive the call.** My first pass kept the map as a **member** of `Solution`. A second `cloneGraph` call on the same object returned the **first call's copies** and appended their neighbours again: the root went from 2 to 4 neighbours, and the clone was invalid. On a *different* graph it's worse: freed nodes' addresses get reused by `new`, so a fresh node can map to a stale copy. A function whose output depends only on its input keeps its state local.
+    * **`operator[]` on a read inserts on a miss.** `return seen_[node]` was safe only because the key had to exist. Read-only lookups use `find` or `at`.
+    * **`std::array<Node*, 101> seen{}` needs the braces.** `{}` value-initialises every slot to `nullptr`, which *is* the "not discovered" state. Without the braces, a local array of pointers is uninitialised garbage, and `!slot` reads it.
+
+* **The Struggle & Insights:**
+    * **`seen` and the map were the same fact.** `seen.contains(x)` and `map.contains(x)` were always equal, because a copy is created exactly when a node is discovered. Deleting `seen` removed a hash set and one lookup per edge. It's the same lesson as `[2]`, where `currentArea` duplicated the read cursor: **two variables that always agree are one variable.**
+    * **Hash once, and use the answer you already computed.** In my second version the helper called `try_emplace` (which knows whether the key was new) but returned only the pointer, so the caller asked `contains` first. That's 2 hashes per neighbour, and the first version had 3 (`contains`, `find`, `operator[]`). The fix: the helper returns `{copy, isNew}`, and the push depends on that `isNew`. **21.5 → 11.9 µs** at 100 nodes, 1.8× from one lookup. At 100k nodes / 800k edges it barely moved (64 → 62 ms). There, each lookup is a cache miss into a random bucket plus a pointer chase to a heap-allocated map node, so *fewer* lookups help less than *cheaper* ones. `map.reserve(n)` didn't help either: it removes rehashing, not the per-entry allocation, and it measured 30% slower at 100k.
+    * **The array indexed by `val` is a hash map with the identity hash.** My question: *"what if root 1 neighbours 201 and 2? How do I insert 201 by index?"* The answer is that it isn't a list you append to in discovery order. It's a **direct-address table**: slot `k` holds the copy of the node with `val == k`, written in any order, with `nullptr` meaning "not discovered". What it needs up front is the **largest `val`**, not n, and the slots must **exist**, so it's a sized table, not `reserve` (the same trap as Minimum Interval's scattered writes). LeetCode guarantees unique values in 1..100, so `std::array<Node*, 101>{}` covers every legal input, and 201 can't occur. **It's valid only under two conditions, and both must be said:**
+        * **Values are small and dense.** Otherwise memory scales with the largest value: `{1, 2, 10⁹}` would be 8 GB of pointers for 3 nodes.
+        * **Values are unique.** Two nodes with `val == 5` would share `copy[5]`, so the second would look already discovered and both would map to one copy. Pointer keys can't collide, which is why the general solution keys on `Node*`.
+    * **The interview line:** "The general solution maps `Node*` to its copy. Given unique values in 1..100, I'd swap the map for a 101-slot array, which is 2× faster measured, and say why it doesn't generalise."
+    * **Last details in the final version:**
+        * `Node*& slot = seen[node->val]` names the slot once. It serves as the test, the write and the return. `new` is an opaque call, so without the reference the compiler has to reload `node->val` and the slot after it.
+        * `nodeVector.reserve(100)`: with the bound known, it removes the 7 doublings. The 201 allocations left are exactly the output (100 nodes + 100 `neighbors` buffers) plus 1 queue.
+        * `assert(node->val <= 100)` records the assumption (`std::array::operator[]` doesn't check bounds).
+    * **Measured (100 nodes, 3,400 directed edges, `-O2`):**
+
+        | Version | Time | Allocations |
+        | -- | -- | -- |
+        | Member map, no `seen` (`std::queue`, 2–3 hashes per edge) | 23.2 µs | 307 |
+        | Local map, `contains` + `try_emplace` (`3d2d03a`) | 21.5 µs | 312 |
+        | Local map, one `try_emplace`, its `isNew` drives the push (`1e95c02`) | 11.9 µs | 312 |
+        | **Final:** `std::array<Node*, 101>` by `val`, reserved queue | **5.1 µs** | **201** |
+
+* **Time & Space Complexity:**
+    * **Time O(V + E).** Each node is discovered, copied and pushed once, and each directed edge is wired once. That's expected O(1) per edge with the map, guaranteed O(1) with the array.
+    * **Space O(V)** for the map or array plus the queue, not counting the clone itself, which is the O(V + E) output.
