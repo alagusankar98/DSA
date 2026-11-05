@@ -235,7 +235,7 @@ The nodes aren't given. They're **states** (words, board positions), and an edge
 
 ### [4] Walls and Gates (Islands and Treasure)
 
-> First pass `6c4a1e2` (a separate BFS per gate), then two rounds: accumulate all gates before the loop (`9b5bf08`), then drop the `unordered_set` and let the grid be `visited` (final commit). My initial instinct was to start from every land cell and search outward for the nearest gate. A nudge to flip the direction — start from the gates — was the click. The two rounds after the first pass were about removing redundant state: first `std::min` (unnecessary once the BFS is truly multi-source), then the entire `seen` set.
+> First pass `6c4a1e2` (a separate BFS per gate), then two rounds: accumulate all gates before the loop (`9b5bf08`), then drop the `unordered_set` and let the grid be `visited` (`e6a72d0`). After Rotting Oranges `[5]`, I revisited it to go **layer by layer** instead of storing a level in every queue entry (final commit). My initial instinct was to start from every land cell and search outward for the nearest gate. A nudge to flip the direction — start from the gates — was the click. The two rounds after the first pass were about removing redundant state: first `std::min` (unnecessary once the BFS is truly multi-source), then the entire `seen` set. The revisit removed a third copy: the level stored in each entry.
 
 * **The Core Pattern:** multi-source BFS (§2 Pattern 2). Seed **every** gate (value `0`) into the queue before the loop starts. Then run one BFS. Each level is one more step of distance, and the first time a cell is reached is along a shortest path, so a direct assignment is correct — no `min` needed.
     * **Why multi-source works:** imagine dropping a stone into water at every gate simultaneously. The ripples expand one step at a time. The first ripple to reach any land cell is, by definition, the shortest distance from that cell to its nearest gate. A second ripple arriving later finds the cell already written and skips it.
@@ -250,10 +250,24 @@ The nodes aren't given. They're **states** (words, board positions), and an edge
     * **The original instinct was backwards.** I wanted to start from every INF cell, search outward for the nearest gate, then backtrack updating distances. That's $O((R \cdot C)^2)$ in the worst case: potentially 62,000 cells each launching a full traversal. Flipping the direction — start from gates, expand outward — makes every cell $O(1)$ amortised work.
     * **"`std::min` is a code smell in BFS."** If you need `min` when writing a distance, it means the same cell can be reached by multiple BFS passes, which means you're running per-source BFS, not multi-source. In a true multi-source BFS, first visit = shortest distance, so it's always a plain assignment.
     * **Three states, one check.** The grid has three kinds of cells: walls (`-1`), gates (`0`), and land (`INT_MAX` initially, then a distance). The `== INT_MAX` guard handles all three: walls and gates fail it (never enqueued), already-visited land fails it (already written), and unvisited land passes it. One comparison does the work of `!= -1 && != 0 && !seen.contains(…)`.
+    * **Where the distance comes from: three ways, all correct.**
+        * **A level in every entry** (`e6a72d0`): `{i, j, level}`, 12 bytes. A neighbour gets `level` and is pushed with `level + 1`.
+        * **Layer by layer** (final): entries are just `{i, j}`, 8 bytes. Save `levelEnd = size()` at the start of each layer and write `currentLevel` (starting at 1, because the gates are layer 0), then add one after the layer. It's the same loop shape as `[5]`. Unlike `[5]` there's no early exit, because every reachable room has to be written.
+        * **Read it from the grid** (scratch only): when a cell is popped, its own distance is **already in the grid**. It was written when the cell was discovered, and gates hold `0`. So the neighbour's distance is `grid[r][c] + 1`, and neither the entry nor a counter needs to carry a level. This works only because the output *is* the distance map. In `[5]` the grid holds only `0/1/2`, so there's nothing to read the time back from.
+    * **Measured** (3000 × 3000, 30 gates, 10% walls, `-O2`, best of 7, three runs; all three versions 0 wrong out of 20,000 fuzzed grids against a per-room brute force):
+
+        | Version | Time |
+        | -- | -- |
+        | Level in every entry (`e6a72d0`) | ~135–140 ms |
+        | **Final:** layer by layer | **~119–126 ms** |
+        | Read the level from `grid[r][c]` | ~123–133 ms |
+
+        Layering is about 10% faster for the same reason as in `[5]`: 8-byte entries instead of 12, so less memory traffic through the queue. Here it's the *only* change, because the grid was already the visited set and there's no wasted final layer. Reading from the grid ties with layering: one extra load per pop (of a cell written moments ago, so almost certainly still in cache) in exchange for no inner loop. **Default to layer by layer**, because it's the pattern that also works when the output isn't a distance (`[5]`, Word Ladder). In an interview, say the third option out loud: "the grid already holds each cell's distance, so the queue only needs coordinates."
+    * **Last detail:** `static constexpr` on the direction table (see `[5]`). My first edit wrote `td::array`, so check that it compiles before you commit.
 
 * **Time & Space Complexity:**
     * **Time O(R · C).** Every cell is enqueued at most once and checks 4 neighbours. The gate-seeding pass is also O(R · C).
-    * **Space O(R · C)** for the BFS vector (reserved to `rows * columns`). No auxiliary visited structure — the grid is modified in place.
+    * **Space O(R · C)** for the BFS vector (reserved to `rows * columns`, 8 bytes per entry in the final version). No auxiliary visited structure — the grid is modified in place.
 
 ### [5] Rotting Oranges (Rotting Fruit)
 
