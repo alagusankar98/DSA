@@ -76,7 +76,7 @@ Loop over every cell. When you find an unvisited cell of the right kind, start a
 ### Pattern 2: Multi-Source BFS (distance to the nearest source)
 Push **all** sources into the queue first, then BFS level by level. Each level is one unit of distance.
 * *Use for:* Rotting Oranges (minutes until everything rots; check for any fresh orange left at the end), Walls and Gates / Islands and Treasure (distance from every room to its nearest gate).
-* *Discipline:* `size = q.size()` per round when you need to count the rounds.
+* *Discipline:* when you need to count the rounds, save `levelEnd = q.size()` at the start of each round and stop the moment the goal is met (Rotting Oranges: return when the fresh count hits 0, or a final empty round adds a fake minute). The line after the loop then always means "unreachable".
 
 ### Pattern 3: Search Backwards from the Border (reverse the question)
 Instead of asking "can this cell reach the edge?" from every cell (expensive), start from the **edge** and mark everything that can reach it, in one traversal per border.
@@ -254,3 +254,38 @@ The nodes aren't given. They're **states** (words, board positions), and an edge
 * **Time & Space Complexity:**
     * **Time O(R · C).** Every cell is enqueued at most once and checks 4 neighbours. The gate-seeding pass is also O(R · C).
     * **Space O(R · C)** for the BFS vector (reserved to `rows * columns`). No auxiliary visited structure — the grid is modified in place.
+
+### [5] Rotting Oranges (Rotting Fruit)
+
+> First pass `ed7a501` (minutes written into the grid with an offset), then `f890bb7` (minutes in each queue entry, plus a `freshFruit` counter), `889aaa4` (layer by layer), and the final `c48ad50` (a flat `uint8_t` buffer, and an early return when the last fruit rots). The approach carried straight over from Walls and Gates `[4]`: seed every rotten fruit, then run one BFS. The wall was **representation**. The grid already uses 0, 1 and 2, so where do the minutes go?
+
+* **The Core Pattern:** multi-source BFS that **counts rounds** (§2 Pattern 2). Seed every `2` into the queue, and process one layer per minute. The answer is the number of layers that rotted something, or `-1` if any fresh fruit is left over.
+    * **What changes from `[4]`:** in `[4]` the output is a distance **per cell**, so writing it into the grid is the job. Here the output is **one number** (the minute the last fruit rots) plus a yes/no (did every fruit rot?). The grid only has to hold **state**, never time.
+    * **Mental model:** the same ripples as `[4]`, all starting together. The answer is the moment the last ripple lands, and `-1` means some fresh fruit sits behind a wall the ripples can't cross.
+
+* **The "Gotcha":**
+    * **One container, one job.** My first pass wrote `minutes + 1` into the grid. Without an offset, a fruit that rotted at minute 1 reads as `1` = fresh, so I started the minutes at 10. That worked, but the last line had to undo the encoding (`maxMinutes <= 2 ? 0 : maxMinutes - minuteOffset`), so two distant parts of the function were tied together by a magic number. And the queue entries (`IndexMinute`) **already carried the minutes**: the time was stored twice. The split: **the grid holds state** (write `2` on discovery; that's the visited mark, and `== 1` is the only check), and **the queue holds time**.
+    * **Count the change where the change happens.** I first decremented `freshFruit` in the outer loop (on pop). Pops include the original rotten fruit, which were never fresh. The only `1 → 2` transition is in the neighbour loop, next to the write and the push, so the decrement goes there. Keep a counter on the same line as the state change it counts, and it can't drift.
+    * **The last layer rots nothing.** A plain `minutes++` per layer overcounts by one: after the last fruit rots, the loop still processes those newly rotten fruit as one more layer, finds no fresh neighbours, and adds a minute. My fix, `if (read < bfsVector.size()) lastMinute++` (only count a layer that grew the queue), was correct but still **ran** the wasted layer. The final version returns as soon as `freshFruit` hits 0 after a layer. That also makes the increment safe to do unconditionally: the only layer that rots nothing while fresh fruit remains leaves the queue the same size, so the loop exits and returns `-1`, and the extra minute is never returned. So the "did this layer grow?" check is still there, but it's the outer `while` condition now.
+    * **The line after the loop always means "stuck".** Every success returns earlier (`return 0` for no fresh fruit, `return lastMinute` when the count hits 0). So the last line is just `return -1`. Writing `return lastMinute` there returned the layer count instead: LC example 2 gave **5**, `[[1]]` gave **0**, and `[[2,0,1]]` gave **1**, all supposed to be `-1`. A `freshFruit > 0 ? -1 : lastMinute` ternary there is dead code, because its second branch can't be reached.
+    * **No fresh fruit means 0, before any BFS.** Count fresh fruit during the first scan and return `0` straight away (`[[0]]`, `[[2]]`, `[[0,2]]`). The empty grid is the same case: zero fresh fruit, so `0`. My `if (grid.empty()) return -1` contradicted the rule a few lines below it.
+    * **`int` for the counter, not `size_t`.** It's a count that goes down and gets tested with `> 0`. An off-by-one (like the decrement on pop) goes negative, which you can see. Unsigned, it wraps to about 1.8 × 10¹⁹, `> 0` is true, and the answer is a silent `-1`.
+
+* **The Struggle & Insights:**
+    * **`levelEnd`, not `levelSize`.** My first layer loop counted `levelSize` down while `read` counted up. They change together, so `read + levelSize` stays fixed for the whole layer, and that fixed value is `bfsVector.size()` at the start of the layer, i.e. where the layer ends. Two counters were tracking one boundary. Save `levelEnd = bfsVector.size()` and loop `while (read < levelEnd)`. Fruit that rots during the layer is pushed past `levelEnd`, so it's left for the next layer automatically, and both values are `size_t`, so the `static_cast` goes too.
+    * **Flat `uint8_t` buffer instead of `vector<vector<int>>`.** That's 1 allocation instead of R + 1, a quarter of the bytes for 3 states, and one load per access instead of two dependent ones. The fill index is `i * columns + j`. Using `rows` is the stride bug from `[1]` (it goes unnoticed on square and 1-row grids). Copy and classify in the **same** loop, not two passes.
+    * **`static constexpr` on the direction table.** `constexpr` builds it at compile time, and `static` makes it one object in `.rodata` (on an MCU, a `const` table in flash instead of an array copied onto the stack each call). Because the initialization happens at compile time, there's also no thread-safe init guard (`__cxa_guard_acquire`). Checked the assembly at `-O2`: the local version stores all 4 entries to the stack on every call before reading one, and the `static constexpr` version is a single indexed load from `.rodata`. In this loop (a range-`for` over all 4), GCC will most likely unroll it and turn the offsets into immediates either way. So the real point is that the declaration says what the table is.
+    * **Is layer by layer faster than minutes per entry?** I measured it (3000 × 3000 all fresh, one rotten corner, answer 5998, `-O2`, best of 7):
+
+        | Version | Time |
+        | -- | -- |
+        | `f890bb7`: `vector<vector<int>>`, 12-byte `{r, c, minutes}` entries, runs the final layer | ~112 ms |
+        | Minutes per entry, but with the flat `uint8_t` buffer and early exit (scratch only) | ~78 ms |
+        | **Final** `c48ad50`: layer by layer, flat buffer, early exit | **~73 ms** |
+
+        Most of the 35% comes from **the layout and the early exit**. Layering by itself adds about 6%, from 8-byte entries instead of 12 (a 72 MB queue instead of 108 MB at this size). Algorithmically the two are the same. Layer by layer is the canonical answer: one counter, because every entry in a layer has the same distance, and it's the same shape as level-order traversal in Trees and Word Ladder. **A distance per entry is still the tool when distances don't advance in lockstep**: sources that start at different distances, or weighted edges (Dijkstra stores a distance with every entry). In `[4]` the per-cell distance lived in the grid.
+    * **Left on the table (optional):** pad the buffer with a border of walls, `(R+2) × (C+2)`. Then every real cell's neighbours are in bounds, the four bounds comparisons per neighbour go away, a step is `idx ± 1` or `idx ± width`, and the queue can hold one `int` instead of a `pair`.
+
+* **Time & Space Complexity:**
+    * **Time O(R · C).** One scan to copy and classify. Every fruit is pushed once and checks 4 neighbours, and the early exit skips the final empty layer.
+    * **Space O(R · C):** the `R · C`-byte state buffer plus the queue, reserved to `R · C` entries of 8 bytes each. At LeetCode's limit (10 × 10) that's 100 B + 800 B.
