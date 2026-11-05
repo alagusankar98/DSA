@@ -17,21 +17,20 @@ void wallsAndGates(std::vector<std::vector<int>>& grid) {
         for(int j = 0; j < columns; j++){
             if(grid[i][j] != 0) continue;
             bfsNodes.emplace_back(i, j, 1);
-            int read = 0;
+        }
+    }
 
-            while(read < static_cast<int>(bfsNodes.size())){
-                auto [r, c, l] = bfsNodes[read];
-                read++;
-                for(const auto& [rowOffset, colOffset] : directionArray){
-                    if(int rowIdx = (r + rowOffset), colIdx = (c + colOffset); (rowIdx >= 0 && colIdx >= 0 && rowIdx < rows && colIdx < columns && grid[rowIdx][colIdx] > 0 && !seen.contains(rowIdx * columns + colIdx))){
-                        grid[rowIdx][colIdx] = std::min(l, grid[rowIdx][colIdx]); // Update level
-                        seen.insert(rowIdx * columns + colIdx);
-                        bfsNodes.emplace_back(rowIdx, colIdx, l + 1);
-                    }
-                }
+    
+    int read = 0;
+    while(read < static_cast<int>(bfsNodes.size())){
+        auto [r, c, l] = bfsNodes[read];
+        read++;
+        for(const auto& [rowOffset, colOffset] : directionArray){
+            if(int rowIdx = (r + rowOffset), colIdx = (c + colOffset); (rowIdx >= 0 && colIdx >= 0 && rowIdx < rows && colIdx < columns && grid[rowIdx][colIdx] > 0 && !seen.contains(rowIdx * columns + colIdx))){
+                grid[rowIdx][colIdx] = std::min(l, grid[rowIdx][colIdx]); // Update level
+                seen.insert(rowIdx * columns + colIdx);
+                bfsNodes.emplace_back(rowIdx, colIdx, l + 1);
             }
-            bfsNodes.clear();
-            seen.clear();
         }
     }
 }
