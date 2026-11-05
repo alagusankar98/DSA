@@ -346,3 +346,39 @@ The nodes aren't given. They're **states** (words, board positions), and an edge
 * **Time & Space Complexity:**
     * **Time O(R · C).** Each pass pushes each cell at most once and checks 4 neighbours. There's no final scan.
     * **Space O(R · C):** `seen` (1 byte per cell), the queue (8 bytes per entry, reserved R·C), and the output. On the heap, the output is the largest part: one small `vector<int>` allocation per answer.
+
+### [7] Surrounded Regions
+
+> First pass `77e6a85` (border seeds found by scanning every cell, plus a separate `cannotMark` buffer), then `3e33628` (two loops that visit only the border), then the final version after one review: safe cells marked **in the board** with `'#'` through a single `markAndPush` lambda, and a final pass through a raw row pointer. The hardest part was the wording: "surrounded" didn't make sense until I rephrased it as **"an `'O'` survives exactly when it's connected, through `'O'`s, to an `'O'` on the border."** After that, it's Pacific Atlantic `[6]` with one ocean.
+
+* **The Core Pattern:** search backwards from the border (§2 Pattern 3). Don't ask every region "do you touch the border?". Start from **every border `'O'`**, flood through `'O'`s, and mark everything reached as safe. Then one sweep: unmarked `'O'`s are captured (`'X'`), and marked ones go back to `'O'`. O(R·C).
+    * **What changes from `[6]`:** one source set (the whole border) instead of two, and the board is **mutable and is the output**. That's the condition from `[4]` that lets the board hold the visited state. In `[6]` it couldn't, because the second pass needed the heights.
+    * **Mental model:** pour water in along the whole border. Every `'O'` it can reach through `'O'`s is safe. Whatever's left dry is enclosed, and gets captured.
+
+* **The "Gotcha":**
+    * **Border, not corners.** My comment and my description said "corner cells", but the code was right (it checks the whole border). In an interview, "corners" means four cells. It's the same confusion that sank the first Pacific Atlantic idea.
+    * **Walking only the border without four loops.** Two loops cover it, **each handling two opposite edges**: one over the rows does `[i][0]` and `[i][columns-1]`, and one over the columns does `[0][j]` and `[rows-1][j]`. That's 2R + 2C cells instead of scanning all R·C. The corners are shared by both loops, so either trim the column loop to `1 … columns - 2`, or let a test before the push skip them. If you ever want an inner loop over just the edge indices `{0, n-1}`, loop `k < std::min(2, n)` with index `k * (n - 1)`. Don't step `j += n - 1`: when `n == 1` the step is 0 and the loop never ends (it needs a `max(1, …)` guard).
+    * **Changing half the marking scheme is worse than changing none of it.** My first in-place attempt moved the **seeds** to `'#'`, but the **BFS** still set `cannotMark` and left the cells it found as `'O'`. The final pass only reads the board, so every safe cell found by the BFS was captured: **45,551 wrong out of 100,000** (`[[X,O,X],[X,O,X],[X,X,X]]` lost its middle `'O'`). Example 1 still passed, because its only survivor is a border seed. **There must be one source of truth for "visited", written in one place:** `markAndPush` for seeds and BFS alike.
+
+* **The Struggle & Insights:**
+    * **The board is the visited set.** Marking a safe cell `'#'` means "already visited" is just "isn't `'O'` any more". The BFS condition shrinks to the bounds check, `markAndPush`'s single `'O'` test both filters and de-duplicates, and the R·C `cannotMark` buffer (plus a second memory read per neighbour) disappears. As a bonus, the 1-wide duplicate pushes from `3e33628` (when `columns == 1`, `[i][0]` and `[i][columns-1]` are the same cell) go away: the second call sees `'#'` and skips it.
+    * **The final pass does two jobs in one sweep:** `'O'` → `'X'` (captured) and `'#'` → `'O'` (restore).
+    * **A `char` store can alias anything, so take the row pointer once.** `board[i][j]` on `vector<vector<char>>` is two dependent loads (the outer buffer, then row `i`'s begin pointer). `char` is allowed to point into **any** object, so after any `char` store the compiler must assume the row's begin pointer might have changed, and it reloads both pointers for **every cell**. Verified in the `-O2` assembly: the indexed loop has `movq (%rdi)…; movq (%rcx,%rsi)…` inside the loop, while the `int` version of the same loop hoists them by itself (an `int` store can't alias a pointer). The fix: `char* row = board[i].data();` once per row, then `row[j]`.
+        * **`data()` returns the address of element 0, not its value:** `row == &board[i][0]`, `row[j]` is `*(row + j)`, the same byte as `board[i][j]`, readable and writable. It's a `uint8_t buf[]` on an MCU.
+        * **`auto& row = board[i]` isn't enough.** `row[j]` still reads the begin pointer from inside the row object, which a `char` store might have changed. A local `char*` whose address is never taken can't be touched by any store, so it stays in a register.
+        * **Take it fresh for each row** (each row is a separate heap block), and only while nothing resizes that row (iterator invalidation applies to raw pointers too).
+        * **It applies to flat `vector<uint8_t>` too.** `s[k] |= 2` reloads the vector's begin pointer on every iteration and doesn't unroll. Via `s.data()` it loads once and unrolls ×2. It only matters in tight loops with nothing but memory operations. Inside a BFS, the `emplace_back` call forces reloads anyway. **Never keep the queue's `data()` across `emplace_back`**, because a reallocation would leave it dangling.
+    * **Measured** (`-O2`, best of 11, two runs; this machine is noisy):
+
+        | Board | `3e33628` (`cannotMark`, indexed final pass) | Final (in-place `'#'`, row pointer) |
+        | -- | -- | -- |
+        | 200×200 random 50% `'O'` | ~222–250 µs | **~155–172 µs** |
+        | 2000×2000 random | ~19.6–19.9 ms | **~14.0 ms** |
+        | 2000×2000 all `'O'` | ~41–67 ms | **~25–26 ms** |
+        | 2000×2000 `X` border, `O` inside | ~3.3–5.2 ms | **~2.1 ms** |
+
+        Separately, in-place marking measured ~10–25% and the row pointer ~20% on random boards. **Tried and rejected:** a branch-free final pass (a nested `?:` instead of `if / else if`) didn't improve consistently across runs.
+
+* **Time & Space Complexity:**
+    * **Time O(R · C).** O(R + C) seeding, each safe `'O'` pushed once with 4 neighbour checks, and one final sweep.
+    * **Space O(R · C)** for the queue only (8 bytes per entry, reserved R·C for the all-`'O'` worst case). The visited state lives in the board.
