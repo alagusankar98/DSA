@@ -1,64 +1,36 @@
-/*
-// Definition for a Node.
-class Node {
-public:
-    int val;
-    vector<Node*> neighbors;
-    Node() {
-        val = 0;
-        neighbors = vector<Node*>();
-    }
-    Node(int _val) {
-        val = _val;
-        neighbors = vector<Node*>();
-    }
-    Node(int _val, vector<Node*> _neighbors) {
-        val = _val;
-        neighbors = _neighbors;
-    }
-};
-*/
-
 class Solution {
-private:
-    std::unordered_map<Node*, Node*> originalToCopyNodeMap_;
 public:
-    Node* add_or_get_node(Node* node){
-        if(auto it = originalToCopyNodeMap_.find(node); it != originalToCopyNodeMap_.end()){
-            return it->second;
+    Node* add_or_get_node(Node* node, std::unordered_map<Node*, Node*>& seen){
+        auto [it, isNew] = seen.try_emplace(node, nullptr); 
+        if(isNew){
+            // If node does not exist, create a new one and add
+            it->second = new Node(node->val);
         }
-
-        // If node does not exist, create a new one and add
-        Node* newNode = new Node(node->val);
-        originalToCopyNodeMap_[node] = newNode;
-        return newNode;
+        return it->second;
     }
 
     Node* cloneGraph(Node* node) {
         if(!node) return nullptr;
-        std::queue<Node*> nodeQueue;
-        std::unordered_set<Node*> seen;
-
-        Node* root = add_or_get_node(node);
-        nodeQueue.push(node);
-        seen.insert(node);
+        std::vector<Node*> nodeVector;
+        std::unordered_map<Node*, Node*> seen;
+        nodeVector.push_back(node);
+        std::size_t read = 0;
         
-        while(!nodeQueue.empty()){
-            Node* origNode = nodeQueue.front(); nodeQueue.pop();
-            Node* copyNode = add_or_get_node(origNode);
-            seen.insert(origNode);
+        while(read < nodeVector.size()){
+            Node* origNode = nodeVector[read];
+            read++;
+            Node* copyNode = add_or_get_node(origNode, seen);
             copyNode->neighbors.reserve(origNode->neighbors.size());
 
             for(auto& neighborNode : origNode->neighbors){
                 // Process neighbor node next in queue if it is not processed already
                 if(!seen.contains(neighborNode)){
-                    nodeQueue.push(neighborNode);
-                    seen.insert(neighborNode);
+                    nodeVector.push_back(neighborNode);
                 }
-                Node* neighborCopyNode = add_or_get_node(neighborNode);
+                Node* neighborCopyNode = add_or_get_node(neighborNode, seen);
                 copyNode->neighbors.push_back(neighborCopyNode);
             }
         }
-        return root;
+        return seen.at(node);
     }
 };
