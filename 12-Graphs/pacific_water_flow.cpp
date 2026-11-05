@@ -12,13 +12,13 @@ std::vector<std::vector<int>> pacificAtlantic(const std::vector<std::vector<int>
     
     // Left Column for Pacific
     for(int i = 0; i < rows; i++){
-        seen[i * columns] = 1;
+        seen[i * columns] |= 1;
         bfsVector.emplace_back(i, 0);
     }
 
     // Top Row for Pacific
-    for(int j = 0; j < columns; j++){
-        seen[j] = 1;
+    for(int j = 1; j < columns; j++){
+        seen[j] |= 1;
         bfsVector.emplace_back(0, j);
     }
 
@@ -46,10 +46,13 @@ std::vector<std::vector<int>> pacificAtlantic(const std::vector<std::vector<int>
     }
 
     // Bottom Row for Atlantic
-    for(int j = 0; j < columns; j++){
+    for(int j = 0; j < columns - 1; j++){
         seen[(rows - 1) * columns + j] |= (1 << 1);
         bfsVector.emplace_back((rows - 1), j);
     }
+
+    std::vector<std::vector<int>> resultVector;
+    resultVector.reserve(rows * columns);
 
     // BFS for Atlantic
     read = 0;
@@ -66,8 +69,7 @@ std::vector<std::vector<int>> pacificAtlantic(const std::vector<std::vector<int>
         }
     }
 
-    std::vector<std::vector<int>> resultVector;
-    resultVector.reserve(rows * columns);
+    
     for(int i = 0; i < rows; i++){
         for(int j = 0; j < columns; j++){
             if((seen[i * columns + j] & 0b11) == 0b11) resultVector.push_back({i, j}); 
