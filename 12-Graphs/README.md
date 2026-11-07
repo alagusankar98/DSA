@@ -475,3 +475,48 @@ The nodes aren't given. They're **states** (words, board positions), and an edge
 * **Time & Space Complexity:**
     * **Time O(V + E):** two passes over the pairs, one over the courses, and the BFS.
     * **Space O(V + E):** `inDegree`, `offset` (V + 1), the queue (which is also the returned answer), and `edges` (E). Four allocations in total, one of which is the output.
+
+### [10] Graph Valid Tree
+
+> First pass `94dedfb`: undirected CSR, then a BFS with a parent check, guarded by `E > n(n−1)/2`. Final `eb5d2ab`: an `E == n − 1` guard plus a plain connectivity flood, after one review. I wanted to reuse `[8]` with "a few modifications", and two things didn't click: storing an edge both ways looked like it would create a fake 2-cycle, and I didn't have a precise definition of a tree. My n(n−1)/2 guard was the giveaway: **I was validating a graph when the problem asks me to validate a tree.** A Union-Find version is planned as a follow-up commit (see the last insight).
+
+* **The Core Pattern:** **a tree = connected AND acyclic.** On n nodes, that's equivalent to **exactly n − 1 edges AND connected**. So: reject `E != n − 1` in O(1), build the undirected graph, flood from node 0, and return `read == n`. No cycle check is needed at all.
+    * **Why connected + n − 1 edges rules out cycles.** Connecting n nodes takes at least n − 1 edges, one per node after the first, each hanging on by a single edge. A cycle means one edge isn't needed for connectivity: drop it and the cycle's nodes are still joined. So a graph with exactly n − 1 edges and a cycle has only n − 2 edges doing the connecting, which is one too few, and some node must be unreachable. **Any cycle makes `read < n`.**
+    * **The n − 1 check alone is not enough.** It's necessary, not sufficient: a triangle plus an isolated node is 4 nodes with 3 edges and isn't a tree. The proof is the **pair**, and that's the sentence to say in an interview.
+
+* **The "Gotcha":**
+    * **Both directions in storage is correct; Kahn's is what breaks.** My worry was that `0→1` plus `1→0` "is a cycle by default". Not in the storage: that's just how an undirected graph is represented (§1). The problem is `[8]`'s **cycle check**. "In-degree" means "prerequisites I'm waiting on", which only makes sense with direction. Undirected, every connected node has in-degree ≥ 1. On the smallest tree `[[0,1]]` the in-degrees are `[1,1]`, nothing seeds, and Kahn's reports a cycle. Keep the CSR build, drop the in-degree logic.
+    * **Undirected CSR is 2E entries.** Count **both** endpoints in pass 1, size `edges` as `2 * E`, and write twice per pair in pass 3 (one entry into each endpoint's slice, `--offset[...]` from the back, as in `[9]`).
+    * **A tree needs both conditions; my first definition had gaps.** "Every vertex touches at least one other" fails on `0–1, 2–3` (every node has a neighbour, but it's two pieces, a **forest**) and on `n = 1` (a single node *is* a tree). "Reachable from a root" is the connectivity half, and an undirected tree has no special root, so "reachable from 0" is the same test. The triangle is connected but loops, which is the acyclic half.
+    * **"Does the reverse edge exist?" is always true.** My first cycle idea: when a neighbour is already seen, confirm `neighbour → source` exists, and treat the pair as harmless if it does. Undirected means **every** neighbour pair has the reverse edge, so the test never fires. On the triangle it reported no cycle. The right question is narrower: **is this neighbour the specific node that discovered me?** That needs one stored number per node, *who pushed me*, with the root's discoverer as a sentinel `-1` (a valid node is never `-1`, like `nullptr`). In the first pass it went into the queue as `{node, whoPushedMe}`. A separate `parent[]` array is the equivalent alternative.
+    * **`unordered_set<int>` for dense IDs is a hash table where an array would do.** Nodes are `0 … n−1`, which is `[3]`'s direct-address case. Every `insert` was a heap node: **2,011 allocations at n = 2000, 7.5× slower** than `vector<uint8_t> seen(n)`. That undid the allocation savings CSR had just bought.
+
+* **The Struggle & Insights:**
+    * **The guard changes the algorithm, not just the speed.** With `E == n − 1` enforced, the parent check stops being the proof. My question was *"what other choice is there apart from returning early when I see a visited non-parent?"* The other choice is **not checking at all**: skip visited neighbours as in `[1]`, and let `read == n` decide. Two traces settle it, both with n − 1 edges and a cycle:
+        * `n = 4`, `[[0,1],[1,2],[2,0]]`, cycle in node 0's piece. With the parent check, BFS returns `false` at the triangle. Without it, the BFS visits {0,1,2}, `read = 3 < 4`, and it returns `false`. Same answer; the check just exits earlier.
+        * `n = 5`, `[[0,1],[2,3],[3,4],[4,2]]`, cycle elsewhere. BFS from 0 reaches only {0,1}, the parent check **never runs**, and `read = 2 < 5` is the only thing that catches it.
+
+        So `read == n` was doing the deciding all along. The final version is Number of Islands' flood with one comparison at the end, and the code reads exactly like the argument.
+    * **The early exit cost nothing, measured.** Keeping the parent check (12.7 µs at n = 2000) and dropping it (14.4 µs) are within noise on valid trees, where both do the full BFS. The reason to drop it is clarity, not speed.
+    * **Measured** (`-O2`, best of 5, random valid trees with shuffled labels and edge order, which is the worst case since nothing exits early; fuzzed against a Union-Find reference on 200,000 random graphs up to 8 nodes, 0 wrong for every version):
+
+        | Version | n = 2000 | n = 200k |
+        | -- | -- | -- |
+        | First pass `94dedfb` (`unordered_set`, parent pairs) | 2,011 allocs, ~100 µs | 200,018 allocs, ~24–27 ms |
+        | Final `eb5d2ab` (`n − 1` guard, `uint8_t` seen, flood only) | **4 allocs, ~13–14 µs** | **4 allocs, ~6.2 ms** |
+        | Reference: `n − 1` guard + Union-Find, no graph build | 1 alloc, ~3.7–3.9 µs | 1 alloc, ~1.5 ms |
+
+    * **Open item: Union-Find (planned as the next commit).** It's a new structure for me (see §1 "Union-Find"). It answers only "same group?", and it needs **no graph**: it processes the edge list once, in any order. It's a `parent[]` array where each node reports toward its group's leader, and leaders point to themselves. `find(x)` follows the chain to the leader. `unite(a, b)` makes one leader report to the other, **unless they already share a leader**, which means `a` and `b` were already connected, so this edge closes a cycle. Trace on the triangle, n = 4:
+
+        ```
+        start        parent = [0, 1, 2, 3]
+        edge [0,1]   leaders 0, 1 differ  → parent[0] = 1   → [1, 1, 2, 3]
+        edge [1,2]   leaders 1, 2 differ  → parent[1] = 2   → [1, 2, 2, 3]
+        edge [2,0]   find(2) = 2, find(0): 0 → 1 → 2 = 2   → same leader: cycle
+        ```
+
+        With the n − 1 guard, **n − 1 successful merges leave n − (n − 1) = 1 group**, so connectivity comes for free with no traversal. Path compression (repoint the walked chain at the leader) and union by size (attach the smaller group under the larger) keep the chains short, so each operation is effectively O(1). Measured above at ~3.5× faster than the BFS: one pass, and its only state is n ints (8 KB at n = 2000, which fits in L1), against two CSR passes plus 2E writes before the BFS even starts.
+
+* **Time & Space Complexity (final BFS version):**
+    * **Time O(V + E):** the O(1) guard, then two passes over the edges, the prefix sum, and a flood that pushes each node once and scans each of the 2E entries once. Since E = n − 1 by then, that's O(n).
+    * **Space O(V + E) = O(n):** `offset` (n + 1), `edges` (2(n − 1)), the queue (n, reserved), and `seen` (n bytes). Four allocations.
