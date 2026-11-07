@@ -1,6 +1,5 @@
 bool validTree(int n, const std::vector<std::vector<int>>& edges) {
-    std::size_t maxEdges = (static_cast<std::size_t>(n) * (n - 1)) / 2;
-    if(edges.size() > maxEdges) return false;
+    if(static_cast<int>(edges.size()) != (n - 1)) return false;
 
     std::vector<int> offset(n + 1, 0);
     for(const auto& edge : edges){
@@ -9,7 +8,7 @@ bool validTree(int n, const std::vector<std::vector<int>>& edges) {
         offset[edge[1]]++;
     }
 
-    for(size_t i = 0; i < n; i++){
+    for(int i = 0; i < n; i++){
         offset[i + 1] += offset[i];
     }
 
@@ -19,26 +18,22 @@ bool validTree(int n, const std::vector<std::vector<int>>& edges) {
         edgeVector[--offset[edge[1]]] = edge[0];
     }
 
-    std::vector<std::pair<int,int>> bfsVector;
+    std::vector<int> bfsVector;
     bfsVector.reserve(n);
-    std::unordered_set<int> seen;
+    std::vector<uint8_t> seen(n, 0);
     
-    bfsVector.emplace_back(0, -1);
-    seen.insert(0);
+    bfsVector.push_back(0);
+    seen[0] = 1;
     int read = 0;
     while(read < static_cast<int>(bfsVector.size())){
-        const auto [sourceIdx, pushIdx] = bfsVector[read];
+        const int sourceIdx = bfsVector[read];
         read++;
 
         for(int i = offset[sourceIdx]; i < offset[sourceIdx + 1]; i++){
             const int connectedNodeIdx = edgeVector[i];
-            if(seen.contains(connectedNodeIdx)){
-                // We know sourceIdx->connectedIdx connection exists
-                // Check if connectedIdx is the same node that pushed sourceIdx here
-                if(connectedNodeIdx != pushIdx) return false;
-            } else {
-                bfsVector.emplace_back(connectedNodeIdx, sourceIdx);
-                seen.insert(connectedNodeIdx);
+            if(!seen[connectedNodeIdx]){
+                bfsVector.push_back(connectedNodeIdx);
+                seen[connectedNodeIdx] = 1;
             }
         }
     }
