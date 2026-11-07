@@ -422,3 +422,56 @@ The nodes aren't given. They're **states** (words, board positions), and an edge
 * **Time & Space Complexity:**
     * **Time O(V + E).** Two passes over the pairs, one over the courses, and a BFS that dequeues each course at most once and walks each edge at most once.
     * **Space O(V + E):** `offset` (V + 1), `cursor`, `preRequisiteCount` and the queue (V each, the queue reserved exactly), and `edges` (E). Five allocations in total.
+
+### [9] Course Schedule II
+
+> First pass `4d380de`: `[8]`'s CSR + Kahn's code, carried straight over, returning the order instead of a `bool`. Then one review, and the final version, which returns the queue itself and fills the edges **from the back of each slice**, so the `cursor` array disappears. The algorithm was free after `[8]`. Two slips came back from `[8]` (`offset` one slot short, which segfaulted, and the queue reserved for E instead of V), and I learned two C++ rules about `return`.
+
+* **The Core Pattern:** Kahn's algorithm (§2 Pattern 5), exactly as in `[8]`. **The queue is the answer.** Kahn's only queues a course once all of its prerequisites have been popped, so the pop order is a valid topological order. With a cycle, fewer than `numCourses` courses get processed, so return `{}`. A partial order is not an answer.
+
+* **The "Gotcha":**
+    * **No early returns, but keep the final check.** `[8]` returned `true` on empty `prerequisites`. Here the answer is the full list `0 … n−1`, and the general path already produces it: every course has in-degree 0, so all of them are seeded, and the inner loop never runs. An early return would just be a second copy of that logic. The cycle check at the end has to stay, though.
+    * **`{}` can't go in a ternary.** `return {};` compiles, but `return c ? v : {};` doesn't ("expected primary-expression before `{`"). `{}` isn't an expression. It's a **braced initializer list**, a recipe that needs a type from its context. `return` supplies one (the function's return type). `?:` has to work out its own type from its operands, and a braced list has none. `std::vector<int>()` compiles because it names the type.
+    * **…and the ternary that does compile copies the vector.** `return x;` moves a local automatically only when the returned expression is **just the variable's name**. `c ? resultVector : std::vector<int>()` is a new value, so it's copy-constructed from `resultVector`. Measured on the diamond: 7 allocations with the ternary, 6 with `if (read != numCourses) return {};` followed by `return resultVector;`. **Return the name on its own, behind an `if`.**
+    * **The `[8]` sizes again.** `offset` must be **n + 1** long (`offset[u + 1]` is read for the last course; I segfaulted without the extra slot). The queue holds courses, so `reserve(numCourses)`, not E.
+
+* **The Struggle & Insights:**
+    * **`resultVector` was a copy of the queue.** I pushed each popped course into a second vector. But every course is popped once, in the order it was pushed, so `resultVector[k] == bfsVector[k]` at all times. Same lesson as `[2]` and `[3]`: **two variables that always agree are one variable.** Returning `bfsVector` saves a V-sized buffer and V `push_back`s.
+    * **Dropping the cursor: fill each slice from its end.** `[8]` needed a `cursor` copy of `offset`, because filling moved the starts forward and the BFS still needed them. The fix is to make the prefix sum produce the slice **ends**, then fill **downwards**: each decrement walks an end back toward its start, so when filling is done, `offset` holds exactly the starts. My trace on the diamond (`[[1,0],[2,0],[3,1],[3,2]]`, n = 4, E = 4), following `offset` through every loop of both versions:
+
+        | Stage (loop) | Cursor version `[8]` | Fill-from-the-back version (final) |
+        | -- | -- | -- |
+        | Initialisation, `offset(n + 1, 0)` | `[0, 0, 0, 0, 0]` | `[0, 0, 0, 0, 0]` |
+        | Pass 1, count out-degree | into `offset[src + 1]`: `[0, 2, 1, 1, 0]` | into `offset[src]`: `[2, 1, 1, 0, 0]` |
+        | Pass 2, the same prefix loop `offset[i + 1] += offset[i]` | `[0, 2, 3, 4, 4]` = slice **starts** (+ end marker) | `[2, 3, 4, 4, 4]` = slice **ends** (one past each slice) |
+        | Between passes | `cursor` = copy of the starts: `[0, 2, 3, 4]` | nothing, no extra array |
+        | Pass 3, fill `edges` | `edges[cursor[src]++]`: **`offset` untouched**, `cursor` moves up to `[2, 3, 4, 4]` | `edges[--offset[src]]`: `offset` itself moves **down** (trace below) |
+        | **Before the BFS** | **`offset = [0, 2, 3, 4, 4]`**, `edges = [1, 2, 3, 3]` | **`offset = [0, 2, 3, 4, 4]`**, `edges = [2, 1, 3, 3]` |
+
+        * **Every row is the same numbers shifted by one slot.** The pass 1 counts are identical, just stored one index to the left. After pass 2, the final version holds the **ends** where the cursor version holds the **starts**, again shifted by one. That's why the same prefix loop serves both. In the final version `offset[u]` is one past the end of `u`'s slice: course 0 owns `[0, 2)`, course 1 `[2, 3)`, course 2 `[3, 4)`, course 3 `[4, 4)`. `offset[n] = 4 = E` comes for free, because the loop's last step adds course n−1's total into it, and since no course is numbered n, the fill never touches it.
+        * **The final version starts its fill where the cursor version's cursor finished.** The cursor version's `cursor` ends at `[2, 3, 4, 4]`, which is exactly the final version's `offset[0…3]` after the prefix sum. One version walks each course's cursor from start up to end, and the other walks `offset` from end down to start. They cover the same slots, just in the opposite direction.
+        * **Pass 3 in the final version**, `edges[--offset[src]] = dest`:
+
+            ```
+            pair   src  --offset[src]   write            offset after
+            [1,0]   0    2 → 1          edges[1] = 1     [1, 3, 4, 4, 4]
+            [2,0]   0    1 → 0          edges[0] = 2     [0, 3, 4, 4, 4]
+            [3,1]   1    3 → 2          edges[2] = 3     [0, 2, 4, 4, 4]
+            [3,2]   2    4 → 3          edges[3] = 3     [0, 2, 3, 4, 4]
+            ```
+        * **Both versions enter the BFS with the same `offset = [0, 2, 3, 4, 4]`.** In the final version, each course's entry is decremented exactly out-degree times, so it falls from its end to exactly its start. That's the layout the cursor version had all along, so the BFS loop is unchanged and reads `offset[u] … offset[u + 1]`. Only the order inside a slice differs (`edges` `[1, 2, …]` vs `[2, 1, …]`; see the reversed-slices note below).
+    * **Why pre-decrement.** After the prefix sum, `offset[u]` is a **half-open end**: the slot just past `u`'s slice, which belongs to the next course or is past the array. The first write must land at end − 1. My first thought was a manual `-1` when indexing, which works but needs two steps (`edges[offset[src] - 1]`, then `offset[src]--`). **`--offset[src]` is that `-1`, fused:** step back into the slice, then write. It mirrors the cursor version exactly. On a half-open range `[start, end)`, `start` is a valid slot and `end` isn't. So going **up** is *use, then move* (`cursor[src]++`, post-increment), and going **down** is *move, then use* (`--offset[src]`, pre-decrement). **A post-decrement here would be off by one:** the final `offset` comes out the same, but every write lands one slot too high. Course 0's first edge would go into course 1's slot 2, and course 2 would write `edges[4]`, past the end of a 4-element array.
+    * **Slices come out reversed, and that's fine.** Filling from the back puts the last pair seen for a course first in its slice: course 0's slice is `[2, 1]` instead of `[1, 2]`. The diamond's answer changes from `0 1 2 3` to `0 2 1 3`. Both are valid, and LeetCode accepts any valid order. So when diffing the two versions' outputs, a different order isn't a bug, but a pair whose prerequisite comes after its dependent would be.
+    * **Measured** (`-O2`, best of 5, random acyclic graphs; every output checked against all pairs):
+
+        | Version | Allocations | n = 2000, E = 5000 | n = 200k, E = 500k |
+        | -- | -- | -- | -- |
+        | First pass `4d380de` (`resultVector`, ternary, `cursor`) | 7 | ~22 µs | ~9.0–9.6 ms |
+        | Return the queue, `if` + `return {}` | 5 | ~22 µs | ~9.1–9.5 ms |
+        | **Final** (also fill from the back, no `cursor`) | **4** | **~20 µs** | **~8.8–9.3 ms** |
+
+        Be honest about the middle row: removing `resultVector` and the copy saves memory and allocations, but **no measurable time**. The BFS's scattered `inDegree` updates dominate. Dropping `cursor` is a small but consistent 5–10% at LeetCode size (one fewer V-sized allocation and copy).
+
+* **Time & Space Complexity:**
+    * **Time O(V + E):** two passes over the pairs, one over the courses, and the BFS.
+    * **Space O(V + E):** `inDegree`, `offset` (V + 1), the queue (which is also the returned answer), and `edges` (E). Four allocations in total, one of which is the output.
