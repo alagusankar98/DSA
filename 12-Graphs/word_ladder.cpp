@@ -1,42 +1,41 @@
 int ladderLength(std::string beginWord, std::string endWord, const std::vector<std::string>& wordList) {
-    std::unordered_set<std::string> wordListSet;
-    wordListSet.reserve(wordList.size());
-
-    for(const auto& word : wordList){
-        wordListSet.insert(word);
-    }
-
+    std::unordered_set<std::string> wordListSet(wordList.begin(), wordList.end());
     if(!wordListSet.contains(endWord)) return 0;
-
-    std::vector<std::string> bfsVector;
-    bfsVector.reserve(wordList.size() + 1);
-    bfsVector.push_back(beginWord);
+    
+    std::unordered_set<std::string> setA;
+    setA.insert(beginWord);
     wordListSet.erase(beginWord);
 
-    std::size_t read = 0;
+    std::unordered_set<std::string> setB;
+    setB.insert(endWord);
+    wordListSet.erase(endWord);
+
     int level = 1;
-    while(read < bfsVector.size()){
-        std::size_t levelEnd = bfsVector.size();
+    std::unordered_set<std::string> next;
+    while(!setA.empty() && !setB.empty()){
+        // Set A is always small
+        if(setA.size() > setB.size()){
+            std::swap(setA, setB);
+        }
 
-        while(read < levelEnd){
-            std::string currentStr = bfsVector[read];
-            read++;
-
-            for(size_t i = 0; i < currentStr.size(); i++){
-                char origChar = currentStr[i];
+        for(std::string originalStr : setA){
+            for(size_t i = 0; i < originalStr.size(); i++){
+                char originalChar = originalStr[i];
                 for(char j = 'a'; j <= 'z'; j++){
-                    if(origChar != j){
-                        currentStr[i] = j;
-                        if(wordListSet.erase(currentStr)){
-                            if(currentStr == endWord) return (level + 1);
-                            bfsVector.push_back(currentStr);
-                        }
+                    if(j == originalChar) continue;
+                    originalStr[i] = j;
+
+                    if(setB.contains(originalStr)) return (level + 1);
+                    if(wordListSet.erase(originalStr)){
+                        next.insert(originalStr);
                     }
                 }
-                currentStr[i] = origChar;
+                originalStr[i] = originalChar;
             }
         }
+        std::swap(setA, next);
         level++;
+        next.clear();
     }
     return 0;
 }
