@@ -601,3 +601,33 @@ The nodes aren't given. They're **states** (words, board positions), and an edge
 * **Time & Space Complexity:**
     * **Time O(n + E · α(n)), effectively O(n + E):** O(n) to construct, then E `unite`s, with no final scan.
     * **Space O(n):** `parent_` and `size_`, two allocations, no graph.
+
+### [12] Redundant Connection
+
+> First pass `d9727f4`. It's the same `DisjointSet` as `[10]` and `[11]`, returning the first edge whose `unite` fails, and the review found no gap. It took two detours to get there: a segfault I chased for a while (my bounds `assert` was checking against the wrong `n`), and the 1-based node labels, where my first fix broke Union-Find's one invariant.
+
+* **The Core Pattern:** the input is a tree on n nodes plus **one** extra edge, so there are n edges in total, and that's how n is recovered: `n = edges.size()`. Process the edges in input order with `unite`. **The first `unite` that fails is the answer**: its two ends already share a leader, so this edge closes the cycle.
+    * **Why "first failure" = "the last removable edge in the input"** (the problem's tie-break). I first tried to argue it from "the moment the graph stops being a tree", which explains why the edge is *a* valid answer but not why it's the *last* one. The full argument:
+        1. Tree + one edge = **exactly one cycle**.
+        2. **The removable edges are exactly the cycle's edges.** Remove any cycle edge and its nodes stay connected around the rest of the loop, so a tree remains. Remove a non-cycle edge and the graph splits.
+        3. In input order, every cycle edge **except the last one to arrive** joins two groups that aren't connected yet, because the loop isn't complete. So those `unite`s succeed.
+        4. When the cycle's **last** edge arrives, the others already form a path between its endpoints, so `unite` fails.
+
+        So the failure lands exactly on the latest cycle edge in the input. There's only one extra edge, so nothing after it can fail, and stopping there is safe.
+
+* **The "Gotcha":**
+    * **1-based labels: translate at the boundary, and keep the invariant.** The nodes are `1 … n`. My first fix was n + 1 slots with `iota(…, 1)`. That sets `parent[i] = i + 1`, so **no node is its own leader**, `find` has no root to stop at, and `find(n)` reads past the end. **"Every node starts as its own leader" is the one thing the constructor must guarantee, and `iota` from 0 is what guarantees it.** Two correct options:
+        * **n + 1 slots, slot 0 unused:** node IDs match the input. It costs one wasted slot, but **slot 0 is a real singleton group**, so anything that counts leaders (like `[11]`'s first pass) would be off by one.
+        * **n slots, `unite(edge[0] - 1, edge[1] - 1)` (my choice):** the class stays 0-based and identical across `[10]`–`[12]`, and the conversion happens in one visible place where the input arrives. That's the firmware habit of mapping a 1-indexed register map or protocol onto 0-indexed arrays at the interface.
+    * **The segfault was the assert's `n`.** Bounds checks are only as good as the bound they test. Here the node count comes from `edges.size()`, and the valid range is `1 … n`, not `0 … n−1`.
+
+* **The Struggle & Insights:**
+    * **Generalising beyond one extra edge (a follow-up question I asked).** With several extra edges, "the last edge that forms a cycle" means one of two different things:
+        * **"The last edge whose arrival closes a cycle"** (edges processed in order): the same Union-Find, but **don't stop**. Record every failing edge and return the last. As a bonus, **the failing edges are exactly the extra ones, and the accepted edges form a spanning tree.** That's Kruskal's MST (Advanced Graphs): sort edges by weight, keep what `unite` accepts.
+        * **"The last input edge that lies on any cycle"** (which edges are removable): **Union-Find can't answer this, even in reverse.** An edge accepted early can end up on a cycle that later edges complete. Counterexample: `A=[1,2], B=[2,3], C=[1,3], D=[3,4]`. The answer is **C**, but reverse Union-Find (D, C, B, A) fails on **A**. The tool is **bridges**: an edge lies on a cycle ⇔ it's **not a bridge** (an edge whose removal disconnects the graph). **Tarjan's bridge algorithm** finds them all in one DFS, O(V + E). Each node gets a discovery time, and a *low-link*: the earliest discovery time its DFS subtree can reach using at most one back edge. A DFS edge `u → v` is a bridge ⇔ `low[v] > discovery[u]`. It isn't in the NeetCode 150, so it's filed as "know it exists and when to reach for it".
+        * **With exactly one extra edge, both readings coincide.** That's this problem.
+    * **Measured:** nothing to change. Verified on both LeetCode examples and on 100,000 random cases (a random tree on 3–12 nodes plus one extra edge, with edges shuffled and each pair randomly flipped) against a brute force that removes each edge from last to first and checks for a tree. 0 wrong, ASan/UBSan/bounds-checked clean. `return edge;` copies a 2-element vector, but that copy *is* the output the signature requires. Union by size has the same trade-off as `[10]`, which doesn't matter at n ≤ 1000.
+
+* **Time & Space Complexity:**
+    * **Time O(n · α(n)), effectively O(n):** O(n) to construct, then at most n `unite`s, stopping at the failure.
+    * **Space O(n):** `parent_` and `size_`, plus the 2-element result.
