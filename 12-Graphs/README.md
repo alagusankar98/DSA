@@ -43,12 +43,64 @@ BFS reaches nodes in order of distance: everything at distance 1 before anything
 * **DFS with three colours:** white = unvisited, grey = on the current DFS path, black = finished. Reaching a **grey** node means you've found a cycle (you've looped back onto your own path). Adding nodes to a list as they turn black, then reversing it, gives a topological order.
 * *Use for:* Course Schedule (is there a cycle?), Course Schedule II (give the order).
 
-### Union-Find (Disjoint Set Union)
-A different tool for one question: **"are these two nodes in the same group?"**, while edges are being added. Each node points to a **parent**. Following parents leads to the group's **root**, which is the group's ID.
-* **`find(x)`:** follow parents up to the root. **Path compression:** on the way back, point every node directly at the root, so later finds are O(1).
-* **`unite(a, b)`:** find both roots. If they're the same, `a` and `b` were **already connected**, so this edge closes a **cycle**. Otherwise, attach one root under the other (**union by rank/size:** attach the smaller tree under the bigger one, so the trees stay shallow).
-* With both tricks, each operation is effectively **O(1)** (technically O(α(n)), where the inverse Ackermann function α is ≤ 4 for any input that fits in the universe).
-* *Use for:* Redundant Connection (the first edge whose ends are already connected), Number of Connected Components, Graph Valid Tree (n − 1 edges and no cycle). It's an alternative to DFS/BFS for those.
+### Union-Find (Disjoint Set Union, DSU)
+A different tool from BFS/DFS, built for one question: **"are `a` and `b` in the same group?"**, while edges arrive one at a time. Groups only ever **merge**. They never split. It needs **no graph**: no adjacency list, no CSR, no traversal. It reads the edge list once, in any order. First used in Graph Valid Tree `[10]`; every piece below was new to me there.
+
+* **Mental model: teams and leaders.** Every node starts as a one-person team and is its own leader. An edge `a – b` says "merge a's team with b's team". You don't move anyone. You tell one **leader** to report to the other **leader**, and from then on everyone in both teams follows the chain up to the same leader. **Two nodes are in the same group ⇔ their chains end at the same leader.**
+* **Representation: one `int` array, `parent`.** `parent[x]` = who `x` reports to. A leader reports to itself (`parent[x] == x`). Start: `parent = [0, 1, …, n−1]`, so everyone leads themselves. It's a forest of upward pointers stored in a flat array, like linked lists whose "next" is an index pointing toward the leader. On an MCU it's a free-list in a static array.
+    * **Construct it sized, then fill:** `parent_(n)` followed by `std::iota(begin, end, 0)` (`<numeric>`). **Not `reserve(n)` + `iota`:** `reserve` sets capacity, not size, so `begin() == end()` and `iota` writes nothing. `vector<int>(n)` is guaranteed to give n **zeros** (value-initialised), never garbage, and `iota` overwrites them. A `reserve` + `push_back` loop also works, but it measured ~30% slower: every push checks capacity and updates the size, so the loop can't vectorise.
+* **`find(x)`:** follow `parent` until you reach a node that points to itself. That node is `x`'s leader, which is the group's ID.
+* **`unite(a, b)`:** `ra = find(a)`, `rb = find(b)`.
+    * **`ra == rb`:** `a` and `b` were **already connected** by earlier edges. This edge is a second route between them, so **it closes a cycle**. Return `false`.
+    * Otherwise, **link leader to leader**: `parent[rb] = ra` (or the reverse, as decided by size below). Return `true`.
+    * **Naming:** `union` is a C++ keyword (it declares a `union` type), so the method is called `unite`, `unify` or `merge`.
+* **Trace: the triangle, n = 4, edges `[[0,1],[1,2],[2,0]]`:**
+
+    ```
+    start        parent = [0, 1, 2, 3]
+    edge [0,1]   leaders 0, 1 differ  → parent[0] = 1   → [1, 1, 2, 3]
+    edge [1,2]   leaders 1, 2 differ  → parent[1] = 2   → [1, 2, 2, 3]
+    edge [2,0]   find(2) = 2, find(0): 0 → 1 → 2 = 2   → same leader: cycle
+    ```
+* **My two first-attempt bugs (both in `unite`):**
+    * **`parent[x]` is one step, not the leader.** I wrote `rootU = parent[u]`. At `[3,0]` in `[[0,1],[1,3],[3,0],[2,4]]`, `parent[3]` was 1 and `parent[0]` was 0. They looked different, but 3 → 1 → 0 shares leader 0. **Always `find`.**
+    * **Link the leaders, not the nodes.** I wrote `parent[v] = u`. Rewiring a non-leader `v` cuts it out of its group and **can create a loop inside `parent`**: my array became `[3, 0, 2, 1, 2]`, i.e. 0 → 3 → 1 → 0. With no node at the top pointing to itself, any later `find` on 0, 1 or 3 recurses forever.
+    * **Linking `rootV` under `u` (not `rootU`) is correct but makes chains longer, not shorter.** Every node in v's group now climbs through `u` and all of u's ancestors: `1 + depth(u)` extra steps instead of 1. It's the opposite of compression.
+* **Why the plain version is slow: chains.** Feed it a path `[0,1], [1,2], …` and `parent` becomes a linked list n long. Each `find` is O(n), so the input costs O(n²), and a recursive `find` goes **n frames deep**. Two independent fixes: **path compression repairs chains when `find` walks them**, and **union by size/rank stops them forming in `unite`**.
+* **Path compression (in `find`):** once the walk reaches the root, point **every node on the path directly at the root** (the root, not the parent: each node already points at its parent). The recursive one-liner is `return parent[i] = find(parent[i]);`. The recursion goes **down** to find the root, and each frame **writes the root on the way back up**:
+
+    ```
+    chain 3 → 2 → 1 → 0
+    find(0) = 0                          (root)
+    find(1): parent[1] = 0, returns 0
+    find(2): parent[2] = 0, returns 0    ← the root's value travels back up
+    find(3): parent[3] = 0, returns 0    → afterwards 3, 2, 1 all point at 0
+    ```
+    * **Path halving (the iterative variant):** while walking up, point each node at its **grandparent** (`parent[i] = parent[parent[i]]`) and step there. It flattens a bit less per call but uses **no stack**. Pick it on an MCU, or whenever there's no union by size to bound the depth.
+* **Union by size or rank (in `unite`):** the merge direction matters. Attach the **smaller group's leader under the larger group's leader**, so the nodes that get one step deeper are always the minority.
+    * **Size:** `size[x]` = number of nodes in x's group, meaningful **only at a leader**. Start at **1** (a new group is one node). On a merge, the surviving leader's size becomes the **sum of both groups**, not +1. The absorbed leader's size is never read again, so don't bother updating it.
+    * **Rank:** an **upper bound on the tree's height**. Attach the lower rank under the higher. On a tie, pick either one and increase **the survivor's** rank by 1. It's "rank", not "height", because path compression flattens trees without updating it.
+    * **Why it bounds depth to log₂ n:** a node only gets deeper when its group merges into one **at least as big**, so its group at least doubles each time. That can happen at most log₂ n times. With union by size, a recursive `find` can't go deeper than ~11 frames at n = 2000, or ~20 at n = 10⁶.
+    * **Pick one, not both.** **Size** is usually more useful, because it also answers "how big is this group?" (largest component, merge-weighted problems). **Rank** never exceeds ~31, so it fits in a `uint8_t` (n bytes instead of 4n).
+    * **My three size bugs, which a fuzz can't catch** (any merge direction gives correct answers, so only the chain length changes):
+        * **Increment the absorbed leader:** it's no longer a leader, so nobody reads it. Every leader kept its initial 0, every comparison was `0 > 0`, and size had **no effect at all**. Measured as identical `find` counts to having no size array (1,077,736 on a 200k random tree; correct size: ~550k).
+        * **Comparison backwards:** it put the bigger group underneath.
+        * **Initialising to 0:** sums of zeros stay 0, so size is off again. My regression `size_(n, 0)` **segfaulted** on a 10⁶-node path plus one closing edge, at both `-O2` and `-O0`: a million-frame recursive `find`. With `size_(n, 1)` the same input ran in 6 ms.
+* **What each trick buys:**
+
+    | Variant | Cost per operation |
+    | -- | -- |
+    | Neither | O(n) worst case |
+    | Path compression only | O(log n) amortised, usually fine in practice |
+    | Union by size or rank only | O(log n) worst case |
+    | **Both** | **O(α(n)), effectively O(1)**. α is the inverse Ackermann function, < 5 for any n you could ever store |
+
+    **Measured trade-off** (`[10]`): on *random* trees, compression alone (with halving) was **~1.7× faster** than compression + size, because the second array and a 50/50 branch per merge are pure cost when chains stay short anyway. Size buys the **worst-case guarantee**, and with it a recursive `find` that's safe. Interview answer: both tricks, and say that trade-off out loud.
+* **When to use it (vs BFS/DFS):**
+    * **Use it when:** the input is an **edge list** and the question is about **grouping**: "same component?", "how many components?", "does this edge close a cycle?" (undirected). Also when edges **arrive over time** and you answer queries between them (online connectivity). It needs no adjacency structure.
+    * **Don't use it when:** you need **paths, distances or an order** (BFS/DFS/topological sort), edges get **deleted** (groups can't split), or the graph is **directed**. A directed cycle isn't "two ends already share a group": Course Schedule `[8]` needs Kahn's or three-colour DFS.
+    * **Problem shapes:** Graph Valid Tree (`E == n − 1`, and no `unite` fails ⇒ one group) · Number of Connected Components (start at n groups, and every successful `unite` removes one) · Redundant Connection (the first edge whose `unite` returns `false`) · Kruskal's minimum spanning tree in Advanced Graphs (sort edges by weight, keep each edge that `unite` accepts).
+    * **Real world:** network links coming up one by one (are these two routers connected yet?), connected-component labelling of image pixels, Kruskal, type unification in compilers, percolation simulations.
 
 ### Complexity: O(V + E), and why
 A full traversal visits each node once (O(V)) and looks at each edge once, or twice in an undirected graph, once from each end (O(E)). So BFS and DFS are **O(V + E)** time. Space is O(V) for `visited` plus the queue or recursion stack. **For a grid of R × C:** V = R·C and E ≈ 4·R·C, so it's **O(R · C)**.
@@ -96,6 +148,7 @@ Kahn's algorithm (in-degree queue) or DFS with three colours.
 ### Pattern 6: Union-Find (connectivity while adding edges)
 `find` with path compression, `unite` by rank or size. An edge whose two ends already share a root closes a cycle.
 * *Use for:* Redundant Connection, Number of Connected Components, Graph Valid Tree.
+* *Discipline:* `unite` calls `find` on **both** ends and links **leader to leader**, smaller under larger. Sizes start at **1** and the survivor takes the **sum**. Construct `parent` sized and fill it with `iota`, not `reserve`. Undirected only.
 
 ### Pattern 7: Implicit Graph + BFS for Fewest Steps
 The nodes aren't given. They're **states** (words, board positions), and an edge is "one legal move". BFS from the start state gives the fewest moves.
@@ -478,7 +531,7 @@ The nodes aren't given. They're **states** (words, board positions), and an edge
 
 ### [10] Graph Valid Tree
 
-> First pass `94dedfb`: undirected CSR, then a BFS with a parent check, guarded by `E > n(n−1)/2`. Final `eb5d2ab`: an `E == n − 1` guard plus a plain connectivity flood, after one review. I wanted to reuse `[8]` with "a few modifications", and two things didn't click: storing an edge both ways looked like it would create a fake 2-cycle, and I didn't have a precise definition of a tree. My n(n−1)/2 guard was the giveaway: **I was validating a graph when the problem asks me to validate a tree.** A Union-Find version is planned as a follow-up commit (see the last insight).
+> First pass `94dedfb`: undirected CSR, then a BFS with a parent check, guarded by `E > n(n−1)/2`. Final `eb5d2ab`: an `E == n − 1` guard plus a plain connectivity flood, after one review. I wanted to reuse `[8]` with "a few modifications", and two things didn't click: storing an edge both ways looked like it would create a fake 2-cycle, and I didn't have a precise definition of a tree. My n(n−1)/2 guard was the giveaway: **I was validating a graph when the problem asks me to validate a tree.** Then on Nov 8, my first Union-Find (final version), after several rounds of my own fixes. Union-Find was entirely new to me, and its full write-up lives in §1.
 
 * **The Core Pattern:** **a tree = connected AND acyclic.** On n nodes, that's equivalent to **exactly n − 1 edges AND connected**. So: reject `E != n − 1` in O(1), build the undirected graph, flood from node 0, and return `read == n`. No cycle check is needed at all.
     * **Why connected + n − 1 edges rules out cycles.** Connecting n nodes takes at least n − 1 edges, one per node after the first, each hanging on by a single edge. A cycle means one edge isn't needed for connectivity: drop it and the cycle's nodes are still joined. So a graph with exactly n − 1 edges and a cycle has only n − 2 edges doing the connecting, which is one too few, and some node must be unreachable. **Any cycle makes `read < n`.**
@@ -498,25 +551,24 @@ The nodes aren't given. They're **states** (words, board positions), and an edge
 
         So `read == n` was doing the deciding all along. The final version is Number of Islands' flood with one comparison at the end, and the code reads exactly like the argument.
     * **The early exit cost nothing, measured.** Keeping the parent check (12.7 µs at n = 2000) and dropping it (14.4 µs) are within noise on valid trees, where both do the full BFS. The reason to drop it is clarity, not speed.
-    * **Measured** (`-O2`, best of 5, random valid trees with shuffled labels and edge order, which is the worst case since nothing exits early; fuzzed against a Union-Find reference on 200,000 random graphs up to 8 nodes, 0 wrong for every version):
+    * **The Union-Find version (Nov 8): the same answer with no graph.** With the n − 1 guard in place, process every edge with `unite`. If one fails, that edge closes a cycle, so return `false`. If all n − 1 succeed, n groups became **n − (n − 1) = 1**, so the graph is connected and no traversal is needed. The arc, with each step detailed in §1 "Union-Find":
+        * **First attempt:** `parent[u]` instead of `find(u)`, and linking `v` instead of its leader. It returned `true` on `[[0,1],[1,3],[3,0],[2,4]]` (n = 5: a triangle plus a separate edge) and left a loop `0 → 3 → 1 → 0` inside `parent`. My reasoning about the input was right: with n − 1 edges, a cycle and a disconnection always come together. The guard can't see it, so the `unite` failure has to.
+        * **Then `parent[rootV] = u`:** correct, but it lengthens chains. I first thought it was "sort of path compression". It's the opposite.
+        * **Path compression:** the recursive one-liner, right first time.
+        * **Union by size, three tries.** The first try incremented the absorbed leader and compared backwards, so size did nothing (identical `find` counts to no size). Then it was right. Then the constructor rewrite brought back `size_(n, 0)`, which segfaulted on a 10⁶-node path.
+        * **Constructor:** `reserve` + `push_back` → sized vectors + `std::iota`. I hit the `reserve`-then-`iota` trap myself and worked out why: `begin() == end()`.
+    * **Measured** (`-O2`, best of 5–7, random valid trees with shuffled labels and edge order, which is the worst case since nothing exits early; fuzzed against a reference on 200,000 random graphs up to 8 nodes, 0 wrong for every version):
 
-        | Version | n = 2000 | n = 200k |
-        | -- | -- | -- |
-        | First pass `94dedfb` (`unordered_set`, parent pairs) | 2,011 allocs, ~100 µs | 200,018 allocs, ~24–27 ms |
-        | Final `eb5d2ab` (`n − 1` guard, `uint8_t` seen, flood only) | **4 allocs, ~13–14 µs** | **4 allocs, ~6.2 ms** |
-        | Reference: `n − 1` guard + Union-Find, no graph build | 1 alloc, ~3.7–3.9 µs | 1 alloc, ~1.5 ms |
+        | Version | Allocations | n = 2000 | n = 200k |
+        | -- | -- | -- | -- |
+        | First pass `94dedfb` (`unordered_set`, parent pairs) | 2,011 | ~100 µs | ~24–27 ms |
+        | `eb5d2ab` (`n − 1` guard, `uint8_t` seen, flood only) | 4 | ~13–14 µs | ~6.2 ms |
+        | Union-Find, `reserve` + `push_back` constructor | 2 | ~9.3 µs | ~3.7–3.9 ms |
+        | **Final: Union-Find, sized constructor + `iota`, compression + size** | **2** | **~6.2–6.8 µs** | **~3.0–3.2 ms** |
+        | Reference: compression by halving, **no** size | 1 | ~3.7–4.5 µs | ~1.5–2.4 ms |
 
-    * **Open item: Union-Find (planned as the next commit).** It's a new structure for me (see §1 "Union-Find"). It answers only "same group?", and it needs **no graph**: it processes the edge list once, in any order. It's a `parent[]` array where each node reports toward its group's leader, and leaders point to themselves. `find(x)` follows the chain to the leader. `unite(a, b)` makes one leader report to the other, **unless they already share a leader**, which means `a` and `b` were already connected, so this edge closes a cycle. Trace on the triangle, n = 4:
+        **About the last row:** the review first quoted it as "the Union-Find reference" and only later noted that it has **no union by size**. On random trees, the size array plus a 50/50 branch per merge cost ~1.7×. I kept size anyway, for the worst-case depth bound that makes the recursive `find` safe (the 10⁶-node path: 6 ms with size, a segfault without). **Recursive vs iterative `find`** had no consistent winner once size bounds the depth. **Tried and rejected:** storing `−size` in the leader's `parent` slot to use one array instead of two. It saved an allocation but no time, and it's harder to read.
 
-        ```
-        start        parent = [0, 1, 2, 3]
-        edge [0,1]   leaders 0, 1 differ  → parent[0] = 1   → [1, 1, 2, 3]
-        edge [1,2]   leaders 1, 2 differ  → parent[1] = 2   → [1, 2, 2, 3]
-        edge [2,0]   find(2) = 2, find(0): 0 → 1 → 2 = 2   → same leader: cycle
-        ```
-
-        With the n − 1 guard, **n − 1 successful merges leave n − (n − 1) = 1 group**, so connectivity comes for free with no traversal. Path compression (repoint the walked chain at the leader) and union by size (attach the smaller group under the larger) keep the chains short, so each operation is effectively O(1). Measured above at ~3.5× faster than the BFS: one pass, and its only state is n ints (8 KB at n = 2000, which fits in L1), against two CSR passes plus 2E writes before the BFS even starts.
-
-* **Time & Space Complexity (final BFS version):**
-    * **Time O(V + E):** the O(1) guard, then two passes over the edges, the prefix sum, and a flood that pushes each node once and scans each of the 2E entries once. Since E = n − 1 by then, that's O(n).
-    * **Space O(V + E) = O(n):** `offset` (n + 1), `edges` (2(n − 1)), the queue (n, reserved), and `seen` (n bytes). Four allocations.
+* **Time & Space Complexity:**
+    * **Final (Union-Find): time O(n · α(n)), effectively O(n).** The O(1) guard, then n − 1 `unite`s with two `find`s each. **Space O(n):** `parent` and `size`, two allocations, and no E term because no graph is built.
+    * **BFS version (`eb5d2ab`): time O(V + E) = O(n)** (two passes over the edges, prefix sum, a flood over the 2E entries). **Space O(n):** `offset`, `edges` (2(n − 1)), the queue and `seen`. Four allocations.
