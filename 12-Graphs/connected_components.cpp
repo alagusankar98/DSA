@@ -31,7 +31,7 @@ class DisjointSet {
             return true;
         }
 
-        int countParents(){
+        int countLeaders(){
             int count = 0;
             for(int i = 0; i < static_cast<int>(parent_.size()); i++){
                 if(parent_[i] == i) count++;
@@ -44,11 +44,12 @@ public:
     int countComponents(int n, const std::vector<std::vector<int>>& edges) {
         DisjointSet dsu(n);
 
+        int merges = 0;
         for(const auto& edge : edges){
             assert(edge[0] >= 0 && edge[0] < n && edge[1] >= 0 && edge[1] < n);
-            dsu.unite(edge[0], edge[1]);
+            if (dsu.unite(edge[0], edge[1])) merges++;
         }
 
-        return dsu.countParents();
+        return n - merges;
     }
 };

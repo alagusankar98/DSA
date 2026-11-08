@@ -531,7 +531,7 @@ The nodes aren't given. They're **states** (words, board positions), and an edge
 
 ### [10] Graph Valid Tree
 
-> First pass `94dedfb`: undirected CSR, then a BFS with a parent check, guarded by `E > n(n−1)/2`. Final `eb5d2ab`: an `E == n − 1` guard plus a plain connectivity flood, after one review. I wanted to reuse `[8]` with "a few modifications", and two things didn't click: storing an edge both ways looked like it would create a fake 2-cycle, and I didn't have a precise definition of a tree. My n(n−1)/2 guard was the giveaway: **I was validating a graph when the problem asks me to validate a tree.** Then on Nov 8, my first Union-Find (final version), after several rounds of my own fixes. Union-Find was entirely new to me, and its full write-up lives in §1.
+> First pass `94dedfb`: undirected CSR, then a BFS with a parent check, guarded by `E > n(n−1)/2`. Final `eb5d2ab`: an `E == n − 1` guard plus a plain connectivity flood, after one review. I wanted to reuse `[8]` with "a few modifications", and two things didn't click: storing an edge both ways looked like it would create a fake 2-cycle, and I didn't have a precise definition of a tree. My n(n−1)/2 guard was the giveaway: **I was validating a graph when the problem asks me to validate a tree.** Then on Nov 8, my first Union-Find (final `45c98ea`), after several rounds of my own fixes. Union-Find was entirely new to me, and its full write-up lives in §1.
 
 * **The Core Pattern:** **a tree = connected AND acyclic.** On n nodes, that's equivalent to **exactly n − 1 edges AND connected**. So: reject `E != n − 1` in O(1), build the undirected graph, flood from node 0, and return `read == n`. No cycle check is needed at all.
     * **Why connected + n − 1 edges rules out cycles.** Connecting n nodes takes at least n − 1 edges, one per node after the first, each hanging on by a single edge. A cycle means one edge isn't needed for connectivity: drop it and the cycle's nodes are still joined. So a graph with exactly n − 1 edges and a cycle has only n − 2 edges doing the connecting, which is one too few, and some node must be unreachable. **Any cycle makes `read < n`.**
@@ -572,3 +572,32 @@ The nodes aren't given. They're **states** (words, board positions), and an edge
 * **Time & Space Complexity:**
     * **Final (Union-Find): time O(n · α(n)), effectively O(n).** The O(1) guard, then n − 1 `unite`s with two `find`s each. **Space O(n):** `parent` and `size`, two allocations, and no E term because no graph is built.
     * **BFS version (`eb5d2ab`): time O(V + E) = O(n)** (two passes over the edges, prefix sum, a flood over the 2E entries). **Space O(n):** `offset`, `edges` (2(n − 1)), the queue and `seen`. Four allocations.
+
+### [11] Number of Connected Components in an Undirected Graph
+
+> First pass `f589b17`, the day after learning Union-Find in `[10]`. I reused that `DisjointSet` as it was and added a method that counts the leaders at the end. Then one review: count the merges in the main loop instead (final version). It was correct first time, and none of the three size bugs from `[10]` came back.
+
+* **The Core Pattern:** Union-Find (§1, §2 Pattern 6). Start with **n groups**, one per node. Every `unite` that returns `true` merges two groups into one, so it removes **exactly one** group. A `unite` that returns `false` joins two nodes that already share a leader (an edge inside a component, i.e. a cycle), and the count doesn't change. **Components = n − successful merges.**
+    * **Mental model:** n islands, and each edge is a bridge. A bridge between two different islands turns them into one, so the count drops by 1. A bridge between two points on the same island changes nothing.
+    * **Same answer by BFS/DFS:** flood from every unvisited node and count the floods, as in Number of Islands `[1]`. But that needs the graph built first (CSR or adjacency list), and Union-Find reads the edge list directly.
+
+* **The "Gotcha":**
+    * **`unite` already returns the answer.** My first pass ignored its `bool` and scanned `parent_` at the end, counting nodes with `parent_[i] == i`. That's correct, because each group has exactly one leader. But it's an O(n) pass rebuilding a number the loop had already computed one merge at a time. Same lesson as Clone Graph `[3]`, where `try_emplace` already knew `isNew`: **use the result you already have, rather than scanning to rebuild it.**
+    * **Don't recycle `n` as the counter.** I could have decremented `n` on each merge and returned it, but the bounds `assert` needs `n` as "number of nodes". A parameter that silently becomes "number of components" partway through the loop means two meanings under one name. One separate `int` keeps one meaning per name. Counting merges and returning `n - merges` reads as the argument itself.
+    * **Name what's being counted.** `countParents` was misleading, because every node has a parent. The thing counted is **leaders** (roots), one per group. Renamed to `countLeaders`, which then became dead code once the counter replaced it.
+
+* **The Struggle & Insights:**
+    * **The payoff of yesterday's grind.** `[10]` took a day of layered bugs to get the `DisjointSet` right. Here it went in as-is (sizes start at 1, leader-to-leader links, sized construction plus `iota`), and the problem was one counter on top.
+    * **Measured** (`-O2`, best of 7, random edges, two runs; fuzzed against a DFS reference on 200,000 random graphs up to 10 nodes, 0 wrong):
+
+        | Input | First pass (scan leaders at the end) | Final (count merges in the loop) |
+        | -- | -- | -- |
+        | n = 2000, E = 1000 (sparse, 1001 components) | 4.8–5.3 µs | 4.4–4.7 µs |
+        | n = 200k, E = 100k (sparse) | 1.89–1.93 ms | **1.60–1.63 ms** (~15%) |
+        | n = 2000, E = 5000 (dense, 15 components) | 14.8–16.3 µs | 18.4–20.5 µs (see below) |
+
+        **The dense row is a codegen artifact, not an algorithmic loss.** The same scan logic wrapped in a different function also ran ~21 µs, and with inlining disabled the counter was 2–7% faster in every row. The lesson: **differences under ~20% at microsecond scale can come purely from how the compiler inlines.** So check the same logic in a second wrapper before believing a number. The counter is a small real win where n is large relative to E. **Tried and rejected:** stopping once the count reaches 1. On random inputs it never got there (15 components remained even at E = 5000), so it was just a check on every iteration.
+
+* **Time & Space Complexity:**
+    * **Time O(n + E · α(n)), effectively O(n + E):** O(n) to construct, then E `unite`s, with no final scan.
+    * **Space O(n):** `parent_` and `size_`, two allocations, no graph.
