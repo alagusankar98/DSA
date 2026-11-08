@@ -1,6 +1,4 @@
 int ladderLength(std::string beginWord, std::string endWord, const std::vector<std::string>& wordList) {
-    if (beginWord.size() != endWord.size()) return 0;
-
     std::unordered_set<std::string> wordListSet;
     wordListSet.reserve(wordList.size());
 
@@ -13,7 +11,7 @@ int ladderLength(std::string beginWord, std::string endWord, const std::vector<s
     std::vector<std::string> bfsVector;
     bfsVector.reserve(wordList.size() + 1);
     bfsVector.push_back(beginWord);
-    if(wordListSet.contains(beginWord)) wordListSet.erase(beginWord);
+    wordListSet.erase(beginWord);
 
     std::size_t read = 0;
     int level = 1;
@@ -25,15 +23,17 @@ int ladderLength(std::string beginWord, std::string endWord, const std::vector<s
             read++;
 
             for(size_t i = 0; i < currentStr.size(); i++){
-                for(char j = 0; j < 26; j++){
-                    std::string newStr = currentStr;
-                    newStr[i] = 'a' + j;
-                    if(wordListSet.contains(newStr)){
-                        if(newStr == endWord) return (level + 1);
-                        wordListSet.erase(newStr);
-                        bfsVector.push_back(newStr);
+                char origChar = currentStr[i];
+                for(char j = 'a'; j <= 'z'; j++){
+                    if(origChar != j){
+                        currentStr[i] = j;
+                        if(wordListSet.erase(currentStr)){
+                            if(currentStr == endWord) return (level + 1);
+                            bfsVector.push_back(currentStr);
+                        }
                     }
                 }
+                currentStr[i] = origChar;
             }
         }
         level++;
