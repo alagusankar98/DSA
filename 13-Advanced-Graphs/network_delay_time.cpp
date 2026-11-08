@@ -4,8 +4,6 @@ struct EdgeTime{
 };
 int networkDelayTime(const std::vector<std::vector<int>>& times, int n, int k) {
     std::vector<int> offset(n + 1, 0);
-    static constexpr int MAX_TIME = std::numeric_limits<int>::max();
-
     for(const auto& time : times){
         offset[time[0] - 1]++;
     }
@@ -20,33 +18,31 @@ int networkDelayTime(const std::vector<std::vector<int>>& times, int n, int k) {
     }
 
     std::vector<std::uint8_t> seen(n, 0);
-    std::vector<int> distanceVector(n, MAX_TIME);
-
-    distanceVector[k - 1] = 0; // Mark kth node as initial node
+    using DistanceNodePair = std::pair<int, int>;
+    std::vector<DistanceNodePair> vec;
+    vec.reserve(times.size() + 1);
+    std::priority_queue<DistanceNodePair, std::vector<DistanceNodePair>, std::greater<DistanceNodePair>> minQueue(
+        std::greater<DistanceNodePair>(), std::move(vec)
+    );
+    
+    minQueue.emplace(0, (k - 1)); // Mark kth node as initial node with smallest distance
     int lastSettledTime = 0;
-    for(int read = 0; read < n; read++){
-        // Find unseen node with minimum distance
-        int minIdx = -1;
-        int minDistance = MAX_TIME;
-        for(int i = 0; i < n; i++){
-            if(!seen[i]) {
-                if (distanceVector[i] < minDistance){
-                    minDistance = distanceVector[i];
-                    minIdx = i;
-                }
-            }
-        }
+    int settledNodes = 0;
+    while(!minQueue.empty() && (settledNodes < n)){
+        auto [minDistance, minIdx] = minQueue.top(); minQueue.pop();
+        if(seen[minIdx]) continue;
 
-        if(minIdx == -1) return -1; // Return early if we can't find a node, means there is atleast one non-reachable node
         seen[minIdx] = 1; // Mark the index as seen
-        lastSettledTime = minDistance; // minDistance increases over time and this is the max value seen so far
+        settledNodes++;
+
+        lastSettledTime = minDistance;
         // Loop through connected edges of minIdx
         for(int i = offset[minIdx]; i < offset[minIdx + 1]; i++){
-            int distanceToDestination = minDistance + edges[i].time;
-            if(distanceVector[edges[i].destinationNode] > distanceToDestination){
-                distanceVector[edges[i].destinationNode] = distanceToDestination;
+            if(!seen[edges[i].destinationNode]){
+                int distanceToDestination = minDistance + edges[i].time;
+                minQueue.emplace(distanceToDestination, edges[i].destinationNode);
             }
         }
     }
-    return lastSettledTime;
+    return (settledNodes == n) ? lastSettledTime : -1;
 }
