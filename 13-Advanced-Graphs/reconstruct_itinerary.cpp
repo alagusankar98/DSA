@@ -19,7 +19,7 @@ class StringNode {
             return it->second;
         }
 
-        std::string getNode(int i) const {
+        const std::string& getNode(int i) const {
             return indexToNodeVector_[i];
         }
 
@@ -27,41 +27,26 @@ class StringNode {
             return size_;
         }
 
-
 };
 class Solution {
 public:
-    void dfs(const StringNode& stringNodes, const std::vector<int>& offset, std::vector<int>& edges, std::vector<int>& outDegree, int idx, std::vector<std::string>& resultVector){
+    void dfs(const std::vector<int>& offset, const std::vector<int>& edges, std::vector<int>& cursor, int idx, std::vector<int>& resultVector){
 
         // Visit all connected nodes of idx
-        for(int i = offset[idx]; i < offset[idx + 1]; i++){
-            if(edges[i] != -1){
-                int destinationIdx = edges[i];
-                edges[i] = -1;
-                outDegree[idx]--;
-                if(outDegree[destinationIdx] != 0) dfs(stringNodes, offset, edges, outDegree, destinationIdx, resultVector);
-                resultVector.push_back(stringNodes.getNode(destinationIdx));
-            }
+        while(cursor[idx] < offset[idx + 1]){
+            int destinationIdx = edges[cursor[idx]++];
+            if(cursor[destinationIdx] < offset[destinationIdx + 1]) dfs(offset, edges, cursor, destinationIdx, resultVector);
+            resultVector.push_back(destinationIdx);
         }
     }
 
-    void sortEdges(const StringNode& stringNodes, const std::vector<int>& offset, std::vector<int>& edges){
-        for(int i = 0; i < offset.size() - 1; i++){
-            // Sort each node's edges
-            
-            std::vector<std::pair<std::string, int>> nodeIdxPairVector;
-            nodeIdxPairVector.reserve(offset[i + 1] - offset[i]);
-            for(int j = offset[i]; j < offset[i + 1]; j++){
-                nodeIdxPairVector.emplace_back(stringNodes.getNode(edges[j]), edges[j]);
-            }
-
-            std::sort(nodeIdxPairVector.begin(), nodeIdxPairVector.end());
-            std::size_t idx = 0;
-
-            for(int j = offset[i]; j < offset[i + 1]; j++){
-                auto [_, newIdx] = nodeIdxPairVector[idx++];
-                edges[j] = newIdx;
-            }
+    void sortEdges(const StringNode& stringNodes, const std::vector<int>& offset, std::vector<int>& edges, const int n){
+        for(int i = 0; i < n; i++){
+            // Sort each node's edges based on their string values
+            std::sort(edges.begin() + offset[i], edges.begin() + offset[i + 1], 
+            [&](const int a, const int b){
+                return stringNodes.getNode(a) < stringNodes.getNode(b);
+            });
         }
     }
 
@@ -70,9 +55,9 @@ public:
         std::vector<std::pair<int, int>> edgePairIdxVector;
         edgePairIdxVector.reserve(tickets.size());
 
-        static constexpr std::string ROOT_NODE = "JFK";
+        static constexpr std::string_view ROOT_NODE = "JFK";
 
-        stringNodes.add_or_get_node(ROOT_NODE); // Reserve index '0' for root node 'JFK'
+        stringNodes.add_or_get_node(std::string(ROOT_NODE)); // Reserve index '0' for root node 'JFK'
 
         for(const auto& ticket : tickets){
             int sourceIdx = stringNodes.add_or_get_node(ticket[0]);
@@ -83,29 +68,35 @@ public:
         const int n = stringNodes.size();
 
         std::vector<int> offset(n + 1, 0);
-        for(const auto [sourceIdx, _] : edgePairIdxVector){
+        for(const auto& [sourceIdx, _] : edgePairIdxVector){
             offset[sourceIdx]++;
         }
-
-        std::vector<int> outDegree(offset.begin(), offset.end() - 1);
 
         for(int i = 0; i < n; i++){
             offset[i + 1] += offset[i];
         }
 
         std::vector<int> edges(tickets.size());
-        for(const auto [sourceIdx, destinationIdx] : edgePairIdxVector){
+        for(const auto& [sourceIdx, destinationIdx] : edgePairIdxVector){
             edges[--offset[sourceIdx]] = destinationIdx;
         }
 
-        sortEdges(stringNodes, offset, edges);
+        std::vector<int> cursor(offset.begin(), offset.end() - 1);
 
-        std::vector<std::string> resultVector;
+        sortEdges(stringNodes, offset, edges, n);
+
+        std::vector<int> resultVector;
         resultVector.reserve(tickets.size() + 1);
 
-        dfs(stringNodes, offset, edges, outDegree, 0, resultVector);
-        resultVector.push_back(ROOT_NODE);
+        dfs(offset, edges, cursor, 0, resultVector);
+        resultVector.push_back(0);
+        const int numberOfNodes = static_cast<int>(resultVector.size());
 
-        return std::vector(resultVector.rbegin(), resultVector.rend());
+        std::vector<std::string> resultStringVector;
+        resultStringVector.reserve(tickets.size() + 1);
+        for(int i = (numberOfNodes - 1); i >= 0; i--){
+            resultStringVector.push_back(stringNodes.getNode(resultVector[i]));
+        }
+        return resultStringVector;
     }
 };
