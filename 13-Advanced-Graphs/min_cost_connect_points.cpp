@@ -6,8 +6,8 @@ struct DistanceIdxPair {
 };
 class DisjointSet {
     private:
-        std::vector<int> parent_;
-        std::vector<int> size_;
+        std::edgeListtor<int> parent_;
+        std::edgeListtor<int> size_;
     public:
         DisjointSet(int n) : parent_(n), size_(n, 1) {
             std::iota(parent_.begin(), parent_.end(), 0);
@@ -36,28 +36,35 @@ class DisjointSet {
 };
 class Solution {
 public:
-    int minCostConnectPoints(const std::vector<std::vector<int>>& points) {
+    int minCostConnectPoints(const std::edgeListtor<std::edgeListtor<int>>& points) {
         const int n = static_cast<int>(points.size());
-        std::vector<DistanceIdxPair> vec;
-        vec.reserve(n * (n - 1) / 2);
+        std::edgeListtor<DistanceIdxPair> edgeList;
+        edgeList.reserve(n * (n - 1) / 2);
         auto DistanceIdxPairComparator = [](const DistanceIdxPair& a, const DistanceIdxPair& b){
             return a.distance > b.distance;
         };
-        std::priority_queue<DistanceIdxPair, std::vector<DistanceIdxPair>, decltype(DistanceIdxPairComparator)> minQueue(DistanceIdxPairComparator, std::move(vec));
 
-        // Generate edges and store by distance in min-heap
+        // Generate edges and store by distance in vector (convert to min heap later)
         for(int i = 0; i < n; i++){
+            const int x_i = points[i][0]; // To stop reading array[i] j times in inner loop
+            const int y_i = points[i][1];
             for(int j = i + 1; j < n; j++){
-                int distance = std::abs(points[i][0] - points[j][0]) + std::abs(points[i][1] - points[j][1]);
-                minQueue.emplace(distance, i, j);
+                int distance = std::abs(x_i - points[j][0]) + std::abs(y_i - points[j][1]);
+                edgeList.emplace_back(distance, i, j);
             }
         }
 
+        std::priority_queue<DistanceIdxPair, std::edgeListtor<DistanceIdxPair>, decltype(DistanceIdxPairComparator)> minQueue(DistanceIdxPairComparator, std::move(edgeList));
+
         int totalCost = 0;
         DisjointSet dsu(n);
-        while(!minQueue.empty()){
+        int edgeCount = 0;
+        while(!minQueue.empty() && (edgeCount < (n - 1))){
             auto [distance, u, v] = minQueue.top(); minQueue.pop();
-            if(dsu.unite(u, v)) totalCost += distance;
+            if(dsu.unite(u, v)){
+                totalCost += distance;
+                edgeCount++;
+            }
         }
 
         return totalCost;
