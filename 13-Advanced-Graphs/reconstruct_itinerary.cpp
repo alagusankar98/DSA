@@ -6,13 +6,16 @@ class StringNode {
     public:
         StringNode(std::size_t n){
             nodeToIndexMap_.reserve(n + 1);
-            indexToNodeVector_
+            indexToNodeVector_.reserve(n + 1);
             size_ = 0;
         }
 
-        int add_or_get_node(const& std::string node){
+        int add_or_get_node(const std::string& node){
             auto [it, isNew] = nodeToIndexMap_.try_emplace(node, size_);
-            if(isNew) size_++;
+            if(isNew){
+                size_++;
+                indexToNodeVector_.push_back(node);
+            }
             return it->second;
         }
 

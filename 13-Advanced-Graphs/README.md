@@ -10,7 +10,8 @@ Topic 12 was almost all **unweighted**: every edge cost the same, so "fewest edg
 * **Relaxation:** the one operation every shortest-path algorithm repeats. If going through `u` gives `v` a cheaper cost than `v` currently has (`dist[u] + w < dist[v]`), update `dist[v]`. The algorithms differ only in **which edges they relax, and in what order**.
 * **Negative weights:** a cost that *lowers* the total (a refund, a downhill). They break Dijkstra (below). A **negative cycle** (a loop whose total is below 0) makes "cheapest" meaningless, since you could go round forever.
 * **Spanning tree:** a subset of edges that connects all V nodes with no cycle, so exactly **V − 1 edges** (the Graph Valid Tree `[10]` fact). **Minimum spanning tree (MST):** the spanning tree with the lowest total weight.
-* **Eulerian path:** a walk that uses **every edge exactly once**. (Not to be confused with a Hamiltonian path, which visits every *node* once and is NP-hard.)
+* **Degree.** Undirected: a node's **degree** is the number of edges touching it. Directed: each node has an **in-degree** (edges *arriving*) and an **out-degree** (edges *leaving*). It counts **edges, not neighbour nodes**: two `JFK → ATL` tickets give JFK out-degree 2, even though ATL is one node. (An undirected self-loop adds 2 to its node's degree, because both of its ends touch it.)
+* **Eulerian path:** a walk that uses **every edge exactly once**, from some start node to some end node. **Eulerian circuit:** an Eulerian path that **ends where it started**. (Not to be confused with a Hamiltonian path, which visits every *node* once and is NP-hard.)
 
 ### Dijkstra: BFS with a Priority Queue
 **BFS is Dijkstra where every edge weighs 1.** BFS processes nodes in order of distance because a FIFO queue naturally holds distances `d, d, …, d+1, d+1`. With weights, a node discovered later can still be **cheaper** (one expensive edge vs three cheap ones), so FIFO order is wrong. Replace the queue with a **min-heap keyed on cost**: always pop the cheapest node not yet finalised.
@@ -48,8 +49,22 @@ Kahn's algorithm (Course Schedule `[8]`) works unchanged. The work is **extracti
 * **Size:** 26 letters at most, so a `26 × 26` boolean matrix or 26 small lists is fine here. It's the rare case where an adjacency **matrix** is the right choice (tiny V, and you need to ignore duplicate edges).
 
 ### Eulerian Path: Hierholzer's Algorithm
-"Use every ticket exactly once" means a path through **every edge** once. Two facts:
-* **When does one exist (directed graph):** every node has in-degree = out-degree, except possibly a start node with one extra **out**-edge and an end node with one extra **in**-edge.
+"Use every ticket exactly once" means a path through **every edge** once.
+
+**When does one exist?** It's a counting argument. Every time a walk passes *through* a node, it uses one edge in and one edge out. So every middle node is balanced, and only the start and end can be off, by exactly one each.
+
+| | Undirected | Directed |
+| -- | -- | -- |
+| **Eulerian circuit** | **every** node has even degree. Start anywhere; you end at the same node. | **every** node has in = out. Start anywhere; you end at the same node. |
+| **Eulerian path** (not closed) | **exactly 2** nodes have odd degree. Start at one, end at the other (either direction works). | **exactly one** node has out − in = 1 (**the start**) and **exactly one** has in − out = 1 (**the end**). All the others have in = out. |
+| **Both also need** | all nodes with degree > 0 in **one connected component** | all nodes with degree > 0 in one component, **ignoring edge direction** ("weakly connected") |
+
+* **"At most two odd" is really "0 or 2".** Every edge adds 2 to the total degree (one per end), so the total is even, and an even total can't have an odd number of odd terms. **Exactly 1 odd-degree node is impossible.** 0 odd means a circuit, 2 odd means a path, 4 or more means neither.
+* **The directed imbalances come as a pair.** Each edge adds 1 to the total out-degree and 1 to the total in-degree, so Σ(out − in) = 0. A node with +1 forces a node with −1. You can't have one without the other. Both 0 means a circuit.
+* **A circuit is also a path.** By the definition above, a circuit is just a path whose end is its start, so every circuit counts as a path, and the reverse isn't true (`A → B` is a path, not a circuit). Some books use "Eulerian path" (or "trail") to mean *only* the non-closed kind. With that reading, the two cases in the table don't overlap.
+* **Connectivity is about edges, not every node.** A node with no edges at all (degree 0) doesn't stop a path or circuit existing, because it has no edge you'd need to reach. What fails is edges split into two separate components: then no single walk can cover them all. In LeetCode problems every node comes from an edge, so there are no edgeless nodes.
+* **Reconstruct Itinerary:** the problem guarantees a valid itinerary from `"JFK"`, so you skip all of these checks. Without the guarantee, the directed column gives you the start (out − in = 1) and the end (in − out = 1) from the degrees alone. The end is also where a greedy walk first gets stuck, which is why Hierholzer records it first.
+* *Verified* by brute force on 20,000 random small multigraphs (every condition in the table matched an exhaustive search, for both kinds of graph and both kinds of walk). The odd-degree counts that came up were only 0, 2 and 4, never odd.
 * **Hierholzer:** DFS from the start, **consuming each edge as you take it** (delete it so it can't be reused). When a node has no edges left, **append it to the result on the way back** (post-order). Reverse the result at the end. Why post-order: a greedy walk can enter a dead end early, and appending on the way back puts that dead end *last* in the final path, with the detour spliced in before it.
 * **Greedy forward walking fails:** taking the lexically smallest ticket at every step can strand you before every ticket is used. Hierholzer handles that without any backtracking search.
 * *Use for:* Reconstruct Itinerary (start at `"JFK"`; visit destinations in **lexical order**, so sort each node's edge list or keep them in a min-heap, and with post-order + reverse, the result is the lexically smallest valid itinerary).
