@@ -1,39 +1,63 @@
-struct TimeIdxPair {
-	int maxTime;
-	int i;
-	int j;
+#include <numeric>
+class DisjointSet{
+    private:
+        std::vector<int> parent_;
+        std::vector<int> size_;
+    public:
+        DisjointSet(int n) : parent_(n), size_(n, 1){
+            std::iota(parent_.begin(), parent_.end(), 0);
+        }
+
+        int find(int i){
+            if(i == parent_[i]) return i;
+            return parent_[i] = find(parent_[i]);
+        }
+
+        bool unite(int u, int v){
+            int rootU = find(u);
+            int rootV = find(v);
+
+            if(rootU == rootV) return false;
+
+            if(size_[rootU] > size_[rootV]){
+                parent_[rootV] = rootU;
+                size_[rootU] += size_[rootV];
+            } else {
+                parent_[rootU] = rootV;
+                size_[rootV] += size_[rootU];
+            }
+
+            return true;
+        }
 };
 class Solution {
 public:
     int swimInWater(const std::vector<std::vector<int>>& grid) {
         const int n = static_cast<int>(grid.size());
-		static constexpr std::array<std::pair<int, int>, 4> directionArray = {{{0, -1}, {0, 1}, {-1, 0}, {1, 0}}};
-		
-		auto TimeIdxPairComparator = [](const TimeIdxPair& a, const TimeIdxPair& b) {
-			return a.maxTime > b.maxTime;
-		};
-		
-		std::vector<TimeIdxPair> vec;
-		vec.reserve(n*n); // n^2 nodes for grid
-		std::priority_queue<TimeIdxPair, std::vector<TimeIdxPair>, decltype(TimeIdxPairComparator)> minQueue(TimeIdxPairComparator, std::move(vec));
-		std::vector<std::uint8_t> seen(n*n, 0);
+        if(n == 1) return grid[0][0];
+        static constexpr std::array<std::pair<int, int>, 4> directionArray = {{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}};
+        std::vector<int> position(n*n);
+        for(int i = 0; i < n; i++){
+            for(int j = 0; j < n; j++){
+                position[grid[i][j]] = i * n + j;
+            }
+        }
 
-		// Mark (0,0) as initial node
-		seen[0] = 1;
-		minQueue.emplace(grid[0][0], 0, 0);
+        DisjointSet dsu(n*n);
+        int initNode = grid[0][0];
+        int terminalNode = grid[n-1][n-1];
 
-		while(!minQueue.empty()){
-			auto [maxTime, r, c] = minQueue.top(); minQueue.pop();
-			
-			if((r == c) && (r == (n - 1))) return maxTime; // Reached terminal node (n-1, n-1)
-			
-			for(const auto& [rowOffset, colOffset] : directionArray){
-				if(int rowIdx = (r + rowOffset), colIdx = (c + colOffset); (rowIdx >= 0 && rowIdx < n && colIdx >= 0 && colIdx < n && !seen[rowIdx * n + colIdx])) {
-					seen[rowIdx * n + colIdx] = 1;
-					minQueue.emplace(std::max(maxTime, grid[rowIdx][colIdx]), rowIdx, colIdx);
-				}
-			}
-		}
-		return -1; // Should be unreachable
+        for(int t = 0; t < (n*n); t++){
+            int r = position[t] / n;
+            int c = position[t] % n;
+            for(const auto& [rowOffset, colOffset] : directionArray){
+                if(int rowIdx = (r + rowOffset), colIdx = (c + colOffset); (rowIdx >= 0 && rowIdx < n && colIdx >= 0 && colIdx < n && (grid[rowIdx][colIdx] < t))){
+                    if(dsu.unite(t, grid[rowIdx][colIdx]) && t >= initNode && t >= terminalNode  && dsu.find(initNode) == dsu.find(terminalNode)){
+                        return t;
+                    }
+                }
+            }
+        }
+        return -1; // Unreachable
     }
 };

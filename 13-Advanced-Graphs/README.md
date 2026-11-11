@@ -241,7 +241,7 @@ Consume edges as you take them, append nodes on the way back, reverse at the end
 
 ### [3] Min Cost to Connect All Points
 
-> First pass `e9de438`: Kruskal, with all n(n−1)/2 edges pushed one by one into a min-heap and every edge popped. Then `5fc6264`: early exit after n − 1 merges, heapify once, int-local coordinates. Then Prim learned from zero, built twice: heap Prim `fa643d0`, and the final **array Prim with a fused update/select pass** (in the working copy at the time of writing; the `class Solution` wrapper still needs restoring before commit). The first MST. The walls: how a coordinate becomes a node, not believing the greedy choice is optimal, mistaking Prim for a greedy walk, and three bugs in the fused loop.
+> First pass `e9de438`: Kruskal, with all n(n−1)/2 edges pushed one by one into a min-heap and every edge popped. Then `5fc6264`: early exit after n − 1 merges, heapify once, int-local coordinates. Then Prim learned from zero, built twice: heap Prim `fa643d0`, and the final **array Prim with a fused update/select pass** (committed as `5de7d50`, as a bare function: the `class Solution` wrapper still needs restoring for LeetCode). The first MST. The walls: how a coordinate becomes a node, not believing the greedy choice is optimal, mistaking Prim for a greedy walk, and three bugs in the fused loop.
 
 * **The Core Pattern:** minimum spanning tree (§1, §2 Pattern 4). **Split it into two problems:** the points are just nodes `0..n-1`, and a coordinate only matters when you compute an edge's weight (`|x1 − x2| + |y1 − y2|`). Every pair is an edge, so the graph is **complete**: E = n(n−1)/2, about 500k at n = 1000. **Array Prim is the right algorithm for this input.** `dist[v]` = the cheapest single edge from *any* tree node to v. Each round adds the outside node with the smallest `dist`, then lowers every remaining `dist` using the new node's distances, **computed from the coordinates on the spot**. That's O(n²) time, O(n) space, and no edge list.
     * **Vocabulary I had mixed up:** *MST* is the problem (n − 1 edges connecting everything with the least total weight). *Kruskal* (edge-first: all edges in increasing order, keep one when Union-Find says it joins two groups) and *Prim* (node-first: grow one tree by its cheapest outgoing edge) are two algorithms that solve it. A heap instead of a sort is still Kruskal.
@@ -302,3 +302,55 @@ Consume edges as you take them, append nodes on the way back, reverse at the end
 * **Time & Space Complexity:**
     * **Final (array Prim; un-hoisted on purpose, see above):** **O(n²)** time (n − 1 fused passes over the remaining nodes), **O(n)** space (`dist` + `seen`), 2 allocations.
     * **Kruskal:** O(n²) to generate the edges + O(E) heapify + O(k log E) for the k pops up to the last MST edge, with **O(n²)** space for the edge list (6 MB at n = 1000). Heap Prim: O(n² log n) worst case, O(n²) heap.
+
+### [4] Swim in Rising Water
+
+> First pass `2bbb1da`: Dijkstra with `max` in place of `+` (min-heap keyed on each path's highest cell, mark on push), correct first time. Cleaned up in `690c15b`. Final: **Union-Find in elevation order**, using the guarantee that the elevations are a permutation of 0 … n² − 1 (working copy at the time of writing). Two walls before any code: misreading the waiting rule, and two wrong search ideas (step-order BFS, and pruned path enumeration). Then the greedy-walk trap a second time. Then the Union-Find version, which took the lakes picture to make sense.
+
+* **The Core Pattern:** minimax / bottleneck path (§1 "Minimise the Worst Step", §2 Pattern 2). **Time is one global clock:** at time t the water is at depth t everywhere, and swimming takes no time, so you can enter a cell once **its elevation ≤ t**, whatever cell you're on. A path's finishing time is therefore **its highest cell** (start included), not a sum of waits. The answer is the path whose highest cell is lowest. Two algorithms fit:
+    * **Dijkstra with `max`:** min-heap of `(path max, cell)`. Pop the lowest, and push each unseen neighbour with `max(popped path max, neighbour's elevation)`. Stop when the target pops. The start entry is `grid[0][0]`'s own value, not 0. O(n² log n). Works for **any** elevations.
+    * **Union-Find in elevation order:** because the values are a permutation, `pos[value] = cell` comes from one pass, with no sort. Raise the water one unit at a time: at t, cell `pos[t]` goes under, and is united with each neighbour **already underwater** (elevation < t). The answer is the first t at which start and target share a leader. O(n² α(n²)), no log. It's Kruskal from `[3]`, with cells in place of edges, and the sort comes free.
+
+* **The "Gotcha":**
+    * **The waiting rule.** I asked: at 0 with `[3, 2, 5]` ahead, do I wait 3 more seconds at 2, or 2? Neither framing holds, because nothing resets. At t = 3, both 3 and 2 are under, so swim 0 → 3 → 2 instantly. At t = 5, 5 is under. The finish is at 5, the highest cell. The rule is "enter when the elevation is ≤ the water level", not "you can't go higher than the current cell". 3 → 2 is fine because 2 ≤ t, not because 2 < 3.
+    * **BFS with a "max per level" is wrong twice over.** A level holds cells from many paths, so the max has to travel with each queue entry. Worse, BFS's `seen` keeps the **fewest-steps** arrival, which isn't the **lowest-max** one:
+
+        ```
+        0 7 8
+        1 2 8
+        8 3 4
+        ```
+
+        The best route is 0 → 1 → 2 → 3 → 4 (max **4**). Exploring right before down, (0,1) marks the centre `2` as seen with max 7 first, then (1,0)'s cheap route to it is skipped, and the search answers **7**.
+    * **"No `seen`, and prune everything above the best found" fails too.** Without `seen`, a path can move back and forth between two low cells forever (its max never rises, so it's never pruned). With "no revisits on this path", it terminates, but it enumerates paths: an n × n grid has C(2n−2, n−1) monotone paths alone, **2.55 × 10²⁸ at 50 × 50**. The bound also arrives late (BFS finds the target first by fewest steps) and stays weak. **The fix is the order, not more pruning:** always extend the path with the lowest max. Then the first arrival at each cell is final, and the pruning becomes a single early exit.
+    * **The greedy walk, again.** "From my cell, step to the lowest unseen neighbour" commits to one path, and I saw the flaw myself: at path max 8 with neighbours 3, 4, 5, stepping onto 3 can strand you if 3's neighbours are all above 8, while 4 or 5 led straight to the target. Same trap as my first Prim model in `[3]`. **Dijkstra doesn't walk, it grows a region.** 4 and 5 **stay in the heap** after 3 is popped, and since entries are keyed on **path max** (`max(8, 4) = 8`, not 4), they pop next, ahead of anything 3 adds (≥ 10).
+    * **Mark on push is correct here, unlike Network Delay Time.** I'd been told to mark on pop. Here, the cost of entering a cell depends **only on that cell** (`max(path, elevation)`), and pops come out in non-decreasing order, so any later discovery gives `max(later pop, elevation) ≥ max(earlier pop, elevation)`. The first discovery can't be beaten, and each cell enters the heap once. In Network Delay, a later discovery could arrive over a cheaper *edge*, so marking had to wait for the pop. **Rule: mark on push is safe when the cost of entering a node depends only on the node.**
+    * **Union-Find bug: uniting with dry neighbours.** My first loop united the new cell with all four neighbours. At t = 0 only one cell is under. Its neighbours are dry, and uniting with them builds a bridge to land still above the water. That returned **1 for example 1's 3, and 12 for example 2's 16**. The test is `grid[nb] < t` (strict: the permutation means only the new cell sits at exactly t). Separately, **`n = 1` never returned**, because the only cell has no neighbours, so no `unite` ever succeeds and the check never runs. Return `grid[0][0]` up front.
+
+* **The Struggle & Insights:**
+    * **The lakes picture made Union-Find click.** Each unit of rise sinks exactly one cell, which either starts a new lake (no underwater neighbours) or joins, and possibly merges, the lakes it touches. The DSU *is* the list of lakes. The answer is the level at which start and target first share a lake. **There's no max to search for:** every cell in either lake is ≤ t, and at t − 1 they were still separate lakes. Trace on
+
+        ```
+        0 8 3
+        7 6 2
+        5 4 1
+        ```
+
+        Lake S = {0} is walled in by 7 and 8. Lake T grows from the target through 1, 2, 3, 4, 5, 6. At **t = 7**, the cell going under touches 0 (in S) and 5, 6 (in T), so the lakes merge: **answer 7**.
+    * **The elevation is the DSU ID.** Since values are a permutation, each one names exactly one cell, so `unite(t, grid[nb])`, with start = `grid[0][0]` and target = `grid[n-1][n-1]`, needs no flat-index translation. `pos[t]` is the only mapping in the program.
+    * **Heap version review:** `maxTimeSoFar` was redundant (each entry already carries its path max, and pops are non-decreasing, so the popped value *is* the answer). The `reserve` counted **edges** (4n²) when, with mark-on-push, the heap holds each **cell** at most once (n²). The committed first pass's `4*n` was too small, and the fix overshot by 4×. I also tried 12-byte entries → 8-byte (`max, flat index`). Same or **slower** (82 against 69 µs): the `/ n` to recover the row, and `std::pair` comparing its second field on the many ties. Kept 12 bytes.
+    * **Measured** (`-O2`; all versions fuzzed against binary search + flood fill on 3,000 random permutation grids, plus 2,000 grids a fifth of them "snake" layouts where the answer is near n² − 1, 0 wrong):
+
+        | Input | heap `690c15b` | **Union-Find (final)** |
+        | -- | -- | -- |
+        | 50 × 50 random (LeetCode max) | 62 µs | **24–27 µs** |
+        | 50 × 50 snake | 43 µs | **23–25 µs** |
+        | 1000 × 1000 random | 59.6 ms | **37.9–38.8 ms** |
+        | 1000 × 1000 snake | 35.4 ms | **9.2–9.6 ms** |
+
+    * **Hunting the last gap, honestly.** A scratch Union-Find reference ran 1.2–1.7× faster than mine. I tested four suspects one at a time: DSU ID = flat cell index instead of elevation (≤ 6%, so the "neighbours next to each other in `parent_`" guess was wrong), iterative path-halving `find` (same or **slower**, up to 45% slower on the snake, so the recursive `find` stays), skipping the connectivity check until t ≥ both endpoints (**5–10%**, kept: it's also a true lower bound on the answer), and a flat copy of the grid (0–9%, for 4 MB more). No single structural cause. The rest is spread across small differences, and at LeetCode's size it's 25 µs against 18.
+    * **A single run can lie.** After the endpoint check went in, the first run looked *slower* (34.9 µs against 28.7). Rerunning the old and new builds back to back, three times each, showed it ~5–10% faster, as isolated. **Compare builds back to back before believing a regression.**
+
+* **Time & Space Complexity:**
+    * **Union-Find (final):** **O(n² α(n²))** time (one pass to build `pos`, each cell added once with ≤ 4 `unite`s), **O(n²)** space (`pos` + the DSU's two arrays).
+    * **Heap Dijkstra:** O(n² log n) time, O(n²) space (≤ n² entries with mark-on-push). The general answer when elevations aren't a permutation.
