@@ -1,18 +1,14 @@
 class Solution {
 public:
     string alienOrder(vector<string>& words) {
-        std::array<std::uint8_t, 26> nodes{};
-        int n = 0;
+        uint32_t nodes = 0;
         std::array<int, 26> inDegree{};
         std::array<int, 27> offset{};
         std::vector<std::pair<int, int>> edgePairs;
         edgePairs.reserve(words.size() - 1);
         for(size_t i = 0; i < words.size(); i++){
             for(size_t j = 0; j < words[i].size(); j++){
-                if(!nodes[words[i][j] - 'a']){
-                    n++;
-                    nodes[words[i][j] - 'a'] = 1;
-                }
+                nodes |= (1u << (words[i][j] - 'a'));
             }
 
             if(i < 1) continue; // Start after having one pair
@@ -34,12 +30,14 @@ public:
             edgePairs.emplace_back(words[i-1][j] - 'a', words[i][j] - 'a');
         }
 
+        int n = std::popcount(nodes);
+
         std::string resultString;
         resultString.reserve(n);
 
-        for(int i = 0; i < 26; i++){
+        for(unsigned int i = 0; i < 26; i++){
             offset[i+1] += offset[i];
-            if(nodes[i] && inDegree[i] == 0) resultString.push_back(i + 'a');
+            if(((nodes >> i) & 1) && inDegree[i] == 0) resultString.push_back(i + 'a');
         }
 
         std::vector<int> edges(edgePairs.size(), 0);
