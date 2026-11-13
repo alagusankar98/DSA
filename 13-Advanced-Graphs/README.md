@@ -30,11 +30,12 @@ Sometimes a path's cost isn't the **sum** of its edges but the **largest** one: 
 * *Use for:* Swim in Rising Water (the grid is the graph, Pacific Atlantic style; the cost of a path is its highest cell).
 
 ### Bellman-Ford: Relax Everything, Round by Round
-Instead of choosing the order cleverly, **relax every edge, V − 1 times**. After round `k`, `dist[v]` is the cheapest cost using **at most `k` edges**. A shortest path without a negative cycle has at most V − 1 edges, so V − 1 rounds are enough.
-* **Handles negative weights.** A V-th round that still improves something proves a **negative cycle** exists.
+Instead of choosing the order cleverly, **relax every edge, V − 1 times**. After round `k`, `dist[v]` is **at least as good as** the cheapest path using at most `k` edges. In the textbook in-place version it can be *better*, because a round can chain edges it updated moments earlier (see the hop-limit trick below). A shortest path without a negative cycle has at most V − 1 edges, so V − 1 rounds are enough.
+* **Early exit:** if a whole round relaxes nothing, nothing will ever change again, so stop. Dijkstra orders its progress by **cost**; Bellman-Ford orders it by **edge count**. That is the real difference, not just negative weights.
+* **Handles negative weights.** An **extra** V-th round that still improves something proves a **negative cycle** exists. (An improvement *during* round V − 1 is normal: a cheapest path can use V − 1 edges.)
 * **Cost:** O(V · E). Slower than Dijkstra, but **every round has a meaning: "the best cost with at most k edges"**. That's exactly what a hop-limited question needs.
-* **The hop-limit trick: copy before each round.** If round `k` reads values that were already updated *in the same round*, a path can sneak in 2 edges in one round, and the hop count is wrong. So each round reads from a **copy of the previous round's `dist`** and writes into the current one. (It's Pacific Atlantic's lesson, "don't let the pass you're running read its own writes", in a new form.)
-* *Use for:* Cheapest Flights Within K Stops (**K stops = K + 1 edges**, so K + 1 rounds). **Why plain Dijkstra fails here:** the cheapest route may use too many stops. Dijkstra would finalise a node at its cheapest cost and throw away a pricier route that uses fewer stops, which might be the only one that fits within K.
+* **The hop-limit trick: copy before each round.** If round `k` reads values that were already updated *in the same round*, a path can sneak in 2 edges in one round, and the hop count is wrong. So each round reads from a **copy of the previous round's `dist`** and writes into the current one: `current[v] = min(current[v], prev[u] + w)`. The departure city `u` comes from `prev`, the landing city `v` is a running minimum in `current`, and `current` starts as a copy of `prev`. With the copy, "after round k = cheapest with **at most** k edges" holds exactly. (It's Pacific Atlantic's lesson, "don't let the pass you're running read its own writes", in a new form.)
+* *Use for:* Cheapest Flights Within K Stops (**K stops = K + 1 edges**, so K + 1 rounds). **Why plain Dijkstra fails here:** the cheapest route may use too many stops. Dijkstra would finalise a node at its cheapest cost and throw away a pricier route that uses fewer stops, which might be the only one that fits within K. Dijkstra *can* work if each heap entry also carries its flight count and the `seen` check becomes "an earlier pop here used fewer or equal flights" (`[6]`).
 
 ### Minimum Spanning Tree: Prim and Kruskal
 "Connect every point, with the lowest total cable length." Both algorithms rest on one fact, the **cut property**: split the nodes into any two groups, and the cheapest edge crossing between them is safe to use in an MST.
@@ -75,7 +76,8 @@ Kahn's algorithm (Course Schedule `[8]`) works unchanged. The work is **extracti
 | BFS | O(V + E) | all equal | fewest edges |
 | Dijkstra (binary heap) | O(E log E) | **≥ 0** | cheapest path from one source |
 | Dijkstra (array, dense) | O(V²) | ≥ 0 | same, better when E ≈ V² |
-| Bellman-Ford | O(V · E) | any (detects negative cycles) | cheapest with **at most k edges** after k rounds |
+| Bellman-Ford | O(V · E) | any (detects negative cycles) | cheapest path, any edge count |
+| Bellman-Ford, hop-limited (copy per round) | O(k · E) | any | cheapest with **at most k edges** after k rounds |
 | Kruskal | O(E log E) | any | MST (edge list + Union-Find) |
 | Prim (heap / array) | O(E log E) / O(V²) | any | MST (grow from a node) |
 | Kahn's topological sort | O(V + E) | n/a | an order for a DAG, or "cycle" |
@@ -108,7 +110,7 @@ The cost of a path is its worst edge or cell. Same loop, with `newCost = max(cos
 ### Pattern 3: Shortest Path with a Hop Limit → Bellman-Ford, K + 1 Rounds
 Each round relaxes every edge, reading from **the previous round's copy**.
 * *Use for:* Cheapest Flights Within K Stops.
-* *Discipline:* K stops = K + 1 edges. Copy `dist` before each round. Plain Dijkstra is wrong here: it finalises a node at its cheapest cost, which may use too many stops.
+* *Discipline:* K stops = K + 1 edges. Read `u` from `prev`, take the running min into `current[v]`, then `prev = current`. Break when a round changes nothing. Plain Dijkstra is wrong here: it finalises a node at its cheapest cost, which may use too many stops (state-expanded Dijkstra works: entries carry flights, skip on "fewer-or-equal flights already popped here").
 
 ### Pattern 4: Connect Everything Cheaply → MST
 Kruskal (sort edges + Union-Find) for edge lists. Array Prim for complete or dense graphs.
@@ -389,3 +391,56 @@ Consume edges as you take them, append nodes on the way back, reverse at the end
 * **Time & Space Complexity:**
     * **Time:** **O(C + 26 + E)**: C = total characters (presence pass + pair scans), 26 for seeding and the prefix sum, E ≤ words − 1 edges through Kahn's.
     * **Space:** **O(26 + E)**: the 26-entry in-degree and 27-entry offset on the stack, the edge pairs and CSR edges (≤ 99 each), and the result (≤ 26).
+
+### [6] Cheapest Flights Within K Stops
+
+> First pass `29cf2ec`: Dijkstra over **(cost, flights, city)** states, with a per-city "fewest flights at pop" scoreboard. It took three wrong versions, each found by a fuzzer. Then the Bellman-Ford version, the one to keep: k + 1 rounds with a `prev`/`current` pair and an early exit (written after `29cf2ec`; commit it with the `class Solution` wrapper). I came in thinking "Dijkstra plus a counter". The wall was that **a city no longer has one best answer**, and that broke the instinct every earlier graph problem had trained. Then a video showed a Bellman-Ford with no copy array, and I couldn't see why mine needed one. This is the weakest I've felt after solving a problem.
+
+* **The Core Pattern:** shortest path with a **hop limit** (§1 "Bellman-Ford", §2 Pattern 3). **k stops = k + 1 flights**: a stop is a city you pass *through*, so src and dst don't count. Two correct ways in:
+    * **Bellman-Ford, k + 1 rounds:** round r builds "cheapest price to every city using **at most r flights**" from round r − 1. The flight count is the loop counter, so there's no extra state at all.
+    * **Dijkstra over states:** a heap entry is (cost, flights, city), not just (cost, city), and the skip rule changes from "city already settled" to "an earlier pop at this city used fewer or equal flights".
+
+* **The "Gotcha" — why plain Dijkstra is wrong:** trace src 0, dst 3, k = 1 (2 flights) with `0→1 (1)`, `1→2 (1)`, `2→3 (1)`, `0→2 (5)`.
+    * Dijkstra settles city 2 at cost **2, via 0 → 1 → 2 (2 flights)**, and throws away the direct `0 → 2` at cost 5 (1 flight). Then it reports 3 for city 3, which takes 3 flights: illegal.
+    * The legal answer is `0 → 2 → 3` = **6**, and it goes through exactly the arrival Dijkstra threw away. (I first misread that 2 as the direct flight. It isn't; the direct one costs 5.)
+    * **Neither arrival at 2 beats the other:** (2, 2 flights) is cheaper, (5, 1 flight) has more range left. Network Delay `[1]` worked with one number per city because cost was the only axis. Here there are two axes, so a single `dist[v]` can't hold the answer.
+    * **Counting "how many times a node was updated" isn't a flight count.** That's my first idea for levels, and it's wrong: update counts depend on processing order. The flight count belongs to the **path that arrived**, and it's carried in the entry, the same way cost is.
+
+* **The heap version: three wrong versions on the way to the scoreboard** (each one fuzzed against an exact-hop reference on 200,000 random cases):
+    1. **Push gated on cost** (`total < dist[v]`), the old Network Delay rule: 34 wrong. The expensive-but-shorter arrival never got into the heap. In the same line, I also priced the next flight from `dist[u]` (the cheapest *any* path reached u with) instead of the popped entry's own cost. **Once a city can have several live states, everything you extend comes from the popped entry**, never from a per-city array.
+    2. **Push gated on flights** (`edgeCount <= flights[v]`), then **the scoreboard written at push time:** 138 wrong. Case: src 1, dst 3, k = 2, flights `1→0 (1)`, `1→2 (5)`, `0→2 (3)`, `2→3 (2)`. The pricier `1 → 2 → 3` (cost 7, 2 flights) was *pushed* after the right answer (cost 6, 3 flights), overwrote the scoreboard with "2 flights", and then killed the 6 when it popped. **Pushes have no order guarantee. Only pops come out in cost order**, so only popped entries can be used to judge anything.
+    3. **Scoreboard at pop, but `flights[src] = 0` pre-seeded** with a `>=` check: 50,611 wrong. The very first pop, (0 cost, 0 flights, src), compares `0 >= 0`, skips itself, and every answer is −1. Network Delay could seed `dist[src] = 0` because there the array meant "cheapest *known*", which is true before any pop. **Here it means "fewest flights among entries already popped", which is ∞ everywhere until something is popped.**
+    * **The final rule, in one picture:** read the array as `bestRange[v]`, a per-city scoreboard. On pop, every earlier pop at v was cheaper or equal (heap order). So this entry is only worth anything if it **beats the scoreboard on flights**: skip if `flights >= bestRange[v]`, otherwise record it and expand. Push every neighbour without a gate, and let pops do the judging. It's the same lazy idea as the stale-entry `continue` in `[1]`.
+    * **The check order:** worth anything? → at dst? → any flights left? A dst entry that used exactly k + 1 flights is a valid answer: it has *landed*, it doesn't need to take off. Putting "flights left" before "at dst" rejects it.
+
+* **Bellman-Ford: why the copy, and which array goes where.** The video's version updates one array in place and runs V − 1 rounds. Mine needs `prev` and `current`. The difference took me a long time.
+    * **In place, a round can get ahead.** With `0→1 (1)`, `1→2 (1)`, `0→2 (5)` in that order, round 1 writes `dist[1] = 1`, and then `1 → 2` reads it *in the same round* and writes `dist[2] = 2`: two flights in one round. With the edges in the other order, it doesn't happen. So in place, after round r, `dist[v]` is **at least as good as** the best ≤ r-flight path, and sometimes better because it used more flights. For the plain shortest path that's harmless (it even gets there faster). For a hop limit it's exactly the bug: with k = 0 it answers 2 (illegal) where the right answer is 5.
+    * **With a copy, news travels one flight per round:** like a rumour where people only pass on what they heard *yesterday*. Then "after round r = cheapest with at most r flights" holds exactly, and the round counter really is the flight counter.
+    * **The rule I needed spelled out: `current[v] = min(current[v], prev[u] + w)`.**
+        * **`u` (where the flight departs from) is read from `prev`:** this flight is number r, so I must have reached u in at most r − 1 flights. `current[u]` might already be using r.
+        * **`v` (where it lands) is compared and written in `current`:** several flights can land at v in one round, so it's a **running minimum**, like tracking a max over an array.
+        * **`current` starts as a copy of `prev`,** not ∞: "at most r flights" includes "at most r − 1". If nothing improves v this round, last round's price still stands.
+        * **Then `prev = current`.** Not a swap: a swap leaves `current` holding the array from two rounds ago.
+    * **My Bellman-Ford bugs, in order:**
+        * Both the read and the write went to the copy, so it was still the in-place version.
+        * `k` rounds, not `k + 1`. With k = 0 the loop never ran, so even a direct flight returned ∞.
+        * `INT_MAX` returned for unreachable instead of −1. I thought LeetCode guaranteed reachability. It doesn't: the statement says return −1, and a connected dst can still be out of reach within k + 1 flights.
+        * Then the roles swapped on **both** sides (compare against `prev[v]`, write from `current[u]`): 222 wrong. Comparing against the frozen `prev[v]` means the **last** flight into v wins, not the cheapest. In src 3, dst 4, k = 1, the 3 → 2 → 4 path (12) was overwritten by 3 → 0 → 4 (20). Writing from `current[u]` brought the chaining back (one case gave 12 where the legal answer was 15: *cheaper than possible* is the signature of an illegal path).
+        * Renaming the arrays `prev`/`current` is what fixed it: `current[u]` or `prev[v]` now **read** wrong.
+
+* **The Review & Optimization** (fuzzed on 100,000 cases up to n = 100, E = 4,950, k = n − 1 against an exact-hop DP under ASan/UBSan, 0 wrong for every final version; timed at `-O2`, n = 100):
+
+    | Version | E = 4,950, k = 99 | E = 4,950, k = 5 |
+    | -- | -- | -- |
+    | Bellman-Ford, all k + 1 rounds | 753 µs | 58 µs |
+    | **+ early exit (final)** | **82–86 µs** | 58–61 µs |
+    | heap version `29cf2ec` | 69 µs | 56 µs |
+    | reference: + flat edge array + safe sentinel | 44–45 µs | 29 µs |
+
+    * **The early exit is the one that matters:** on dense input, the prices stop changing after **10.1 rounds on average** out of 100, so ~90% of the work was dead. Without it, my Bellman-Ford was **11× slower than my own first pass**. It needs a compare-and-flag instead of `std::min`, because `std::min` can't say whether anything changed. It's correct because an unchanged round means `current == prev`, so every later round computes the same thing. (I left a redundant `std::min` inside the `if`: the check has already proved the new value is smaller.)
+    * **Constant factors I measured and chose not to code:** the `vector<vector<int>>` input makes every `flight[0..2]` a pointer chase, every round (flatten once into 12-byte `{u, v, w}` records). The `!= INT_MAX` guard is an unpredictable branch while most cities are unreached (a sentinel like `1 << 29` can't overflow, because the largest real path is 100 × 10⁴ and the sentinel + 10⁴ stays far below `INT_MAX`). Each alone: 82 → ~69 µs. Together: **45 µs**, because fewer loads plus no branch lets the loop tighten. It's a 2× constant factor on microseconds, so it's worth one sentence in an interview, not twenty minutes at the keyboard.
+    * **Which to write in an interview:** Bellman-Ford with the copy and the early exit. It's shorter, it has no scoreboard to defend, and the hop limit *is* the loop. The heap version is the follow-up if they ask "can Dijkstra do it?"
+
+* **Time & Space Complexity:**
+    * **Time:** **O(min(k + 1, rounds until stable) · (E + n))**: each round scans every flight and copies n ints. The worst case is O((k + 1) · E).
+    * **Space:** **O(n)**: two price arrays. (Heap version: O(S log S) time, O(S) space, with S ≤ E · (k + 1) pushed states.)
