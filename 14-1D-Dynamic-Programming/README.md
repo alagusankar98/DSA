@@ -112,7 +112,7 @@ If `dp[i]` only reads `dp[i-1]` and `dp[i-2]`, you never need the whole array: k
 
 ### [0] Warm-up: Fibonacci Number (not on the NeetCode 150, not counted)
 
-> Done to learn the four forms before the real problems: naive recursion → memoization `ef2c7e8` → tabulation `7d71aed` → rolled variables (the final, three named ints). I'd read §1 and "understood somewhat". Writing all four made the vocabulary concrete.
+> Done to learn the four forms before the real problems: naive recursion → memoization `ef2c7e8` → tabulation `7d71aed` → rolled variables `028729e` (the final, three named ints). I'd read §1 and "understood somewhat". Writing all four made the vocabulary concrete.
 
 * **The Core Pattern:** `dp[i] = dp[i-1] + dp[i-2]`, base cases `dp[0] = 0`, `dp[1] = 1`, answer `dp[n]`. It's the smallest possible DP, so all the effort goes into the *forms*, not the recurrence.
 
@@ -142,3 +142,32 @@ If `dp[i]` only reads `dp[i-1]` and `dp[i-2]`, you never need the whole array: k
     | memoization | O(n) | O(n) memo + O(n) stack |
     | tabulation | O(n) | O(n) table |
     | **rolled (final)** | **O(n)** | **O(1)**, registers only |
+
+### [1] Climbing Stairs
+
+> First pass, the rolled form straight away: Fibonacci's loop with one base value changed (the file is uncommitted at the time of writing). I listed every climb to 4 by hand and couldn't see how they came from the base cases. The wall was **which end to look at**: I was building climbs from the first step. The answer comes from the last one.
+
+* **The Core Pattern:** step recurrence (§1 "The Families", §2 Pattern 1). **`dp[i]` = the number of distinct ways to reach step i.** `ways(n) = ways(n − 1) + ways(n − 2)`, with ways(1) = 1, ways(0) = 1. It's Fibonacci shifted by one: stairs gives 1, 2, 3, 5, 8, … and Fibonacci gives 0, 1, 1, 2, 3, 5, 8, …, so ways(n) = fib(n + 1).
+
+* **The "Gotcha":**
+    * **Look at the *final* move, not the first.** Standing on step n, the last move was a 1-step (from n − 1) or a 2-step (from n − 2), and nothing else. **Erase that final move** and what's left is a complete climb to the smaller step. The climbs to 3:
+
+        | climb to 3 | final move | erase it → |
+        | -- | -- | -- |
+        | 1+1+**1** | 1-step | 1+1, a climb to 2 |
+        | 2+**1** | 1-step | 2, a climb to 2 |
+        | 1+**2** | 2-step | 1, a climb to 1 |
+
+        Every climb to 2 appears exactly once in the top group, and every climb to 1 in the bottom one, so ways(3) = ways(2) + ways(1). Different final moves means no climb is counted twice, so it's **+**, not "and". My first example ("how do the base cases make up the 5 climbs to 4?") wasn't wrong, it was just looking from the wrong end. This is the §1 Four Questions' "look at the last decision" in its simplest form.
+    * **ways(0) = 1, not 0.** I first said "n = 0, no steps, so 0". But standing still at the bottom *is* one way: the empty climb. The recurrence proves it, because ways(2) = ways(1) + ways(0) is only 2 if ways(0) = 1. **Counting DPs almost always have "one way to do nothing" as the base.** (LeetCode's n ≥ 1, so ways(0) only exists to start the recurrence. Starting the loop at 3 with ways(2) = 2 and ways(1) = 1 avoids it entirely.)
+
+* **The Struggle & Insights:**
+    * **The one-line change from Fibonacci** was mine: `prev2` (two steps back, ways(0)) starts at 1 instead of 0.
+    * **Return `prev1`, and the early return disappears.** After every iteration, `prev1` holds ways(i) for the step just finished, so when the loop ends it holds ways(n), even when the loop never ran. The starting values (ways(1) = 1, ways(0) = 1) already *are* the answers for n = 1 and n = 0. Then `current` can live inside the loop body, so it never exists uninitialised. My version keeps the `n < 2` return and returns `current`. That's correct for LeetCode, but it returns 0 for n = 0, which disagrees with its own `prev2 = 1`. **The trick only works when `prev1`'s starting value is the right answer for every n the loop skips:** Fibonacci's `prev1 = fib(1)` covers n = 1 but not n = 0 (fib(0) is in `prev2`), so Fibonacci still needs its guard.
+    * **Overflow checked:** ways(45) = 1,836,311,903, so `int` holds LeetCode's whole range with ~15% to spare.
+    * Verified for every n = 1..45 against a brute force that enumerates every climb, under ASan/UBSan, 0 wrong.
+
+* **Time & Space Complexity:**
+    * **Time:** **O(n)**: one addition per step.
+    * **Space:** **O(1)**: two or three ints, all in registers.
+
