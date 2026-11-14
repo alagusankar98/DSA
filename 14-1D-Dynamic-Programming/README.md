@@ -145,7 +145,7 @@ If `dp[i]` only reads `dp[i-1]` and `dp[i-2]`, you never need the whole array: k
 
 ### [1] Climbing Stairs
 
-> First pass, the rolled form straight away: Fibonacci's loop with one base value changed (the file is uncommitted at the time of writing). I listed every climb to 4 by hand and couldn't see how they came from the base cases. The wall was **which end to look at**: I was building climbs from the first step. The answer comes from the last one.
+> First pass, the rolled form straight away: Fibonacci's loop with one base value changed (committed with the next problem, in `87f0798`). I listed every climb to 4 by hand and couldn't see how they came from the base cases. The wall was **which end to look at**: I was building climbs from the first step. The answer comes from the last one.
 
 * **The Core Pattern:** step recurrence (§1 "The Families", §2 Pattern 1). **`dp[i]` = the number of distinct ways to reach step i.** `ways(n) = ways(n − 1) + ways(n − 2)`, with ways(1) = 1, ways(0) = 1. It's Fibonacci shifted by one: stairs gives 1, 2, 3, 5, 8, … and Fibonacci gives 0, 1, 1, 2, 3, 5, 8, …, so ways(n) = fib(n + 1).
 
@@ -170,4 +170,49 @@ If `dp[i]` only reads `dp[i-1]` and `dp[i-2]`, you never need the whole array: k
 * **Time & Space Complexity:**
     * **Time:** **O(n)**: one addition per step.
     * **Space:** **O(1)**: two or three ints, all in registers.
+
+### [2] Min Cost Climbing Stairs
+
+> First pass `87f0798`: `dp[i]` = cheapest total to stand on step i, **including** `cost[i]`, answer `min(dp[n-1], dp[n-2])`. Then `3cf0072`: no early return, rolled into two variables. Final `572737d`: `dp[i]` = cheapest cost to **arrive at** step i, before paying, so the top is an ordinary state and the answer is `dp[n]`. "It just isn't clicking": my first plan was a greedy walk backwards from the top, and I could already feel it breaking before I knew why.
+
+* **The Core Pattern:** step recurrence with **min** instead of + (§1 "The Families", §2 Pattern 1). Same question as Climbing Stairs `[1]`: standing at the top, what was the final move? From n − 1 or from n − 2. Stairs **added** the two counts; here you **compare two totals** and keep the smaller.
+
+* **The "Gotcha" — why my greedy walk fails:** my plan was to start at the top and step back to whichever of the two steps below was cheaper, until reaching index 0 or 1. I couldn't decide what to do on ties, and, more importantly, I worried that the cheaper choice might make a later step worse. That second worry is exactly the bug. Smallest tie-free case: **cost = [3, 2, 1]**.
+
+    | from | candidates | greedy picks | paid |
+    | -- | -- | -- | -- |
+    | the top (3) | cost[2] = 1, cost[1] = 2 | index 2 | 1 |
+    | index 2 | cost[1] = 2, cost[0] = 3 | index 1 | 3 |
+    | index 1 is a start | | | **3** |
+
+    The real answer is **2**: start on index 1, then jump straight to the top. Greedy compared **single prices**, but whether a step is a good last stop depends on **the cheapest total to get onto it in the first place**. Index 2 was cheap, but reaching it still meant paying for index 1. Compare the two **finished totals** (`dp[n-1]`, `dp[n-2]`) and nothing earlier can surprise you. **Ties stop mattering too:** `min` of two equal totals is the same number either way, and "later" is already inside each total. (With ties allowed, `[1, 1, 1]` breaks greedy as well: it pays 2, and the answer is 1.)
+
+* **The Struggle & Insights:**
+    * **Two correct `dp[i]` sentences, and the sentence decides the base cases, the loop range and where the answer is** (the §1 Four Questions, 3 and 4):
+
+        | | "cheapest to stand on i, **including** `cost[i]`" (`3cf0072`) | "cheapest to **arrive at** i, before paying" (`572737d`) |
+        | -- | -- | -- |
+        | base cases | dp[0] = cost[0], dp[1] = cost[1] | dp[0] = dp[1] = 0 (both starts are free) |
+        | rule | `cost[i] + min(dp[i-1], dp[i-2])` | `min(dp[i-1] + cost[i-1], dp[i-2] + cost[i-2])` |
+        | loop | `i < n` (the top isn't a state, `cost[n]` doesn't exist) | **`i <= n`** (the top is an ordinary state) |
+        | answer | `min(dp[n-1], dp[n-2])` after the loop | **`dp[n]`** |
+        | n = 1 | reads `cost[1]` out of bounds | returns 0 (index 1 *is* the top) |
+
+        In the first, I hit the out-of-bounds `cost[n]` and worked around it with a final `min`, and my first `dp` had n + 1 slots for a top I couldn't compute. That spare slot was the hint toward the second definition. **In the second, you pay for a step when you *leave* it**, so the rule only ever reads `cost[i-1]` and `cost[i-2]`, and `i = n` is in bounds. At i = 2 it looks like "compare the raw costs" (because dp[0] = dp[1] = 0), which confused me for a moment. From i = 3 on it's comparing real totals.
+    * **Early returns that weren't needed:** my first pass returned `min_element` for n < 3, but with n ≥ 2 guaranteed that only caught n = 2, which the general path already handled. Of the two later versions, only the "including" one still relies on n ≥ 2.
+    * **Measured** (fuzzed against exhaustive search on 200,000 random arrays, n = 2..15, under ASan/UBSan, 0 wrong for every version; `-O2`):
+
+        | Version | n = 10 | n = 1,000 |
+        | -- | -- | -- |
+        | first pass `87f0798` (`dp(n+1)`) | 16–17 ns | 842–964 ns |
+        | `dp(n)` table | 16–17 ns | 846–995 ns |
+        | rolled, "including" `3cf0072` | 4.5–5.3 ns | 779–858 ns |
+        | **rolled, "arrive" `572737d`** | 5.4–5.5 ns | 794–819 ns |
+
+        Rolling is ~3.3× at small n, where the `vector` allocation dominates (the Fibonacci `[0]` lesson). At n = 1,000 it's only 7–20%, because **every step waits for the one before it**: `dp[i]` can't start until `dp[i-1]` exists, so there's nothing to overlap or vectorise. It's one chain of add-then-min, ~0.8 ns per step, and the table version only adds a store and a load per step on top of it. The two definitions tie within noise. Choose by clarity: "arrive" has no special cases.
+    * **Naming:** I called the new value `temp` here. It's the same role as `current` in `[0]` and `[1]`, and one name for one role makes the shape easier to recall.
+
+* **Time & Space Complexity:**
+    * **Time:** **O(n)**: one add-and-min per step.
+    * **Space:** **O(1)**: two ints.
 
