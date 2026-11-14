@@ -1,15 +1,31 @@
-// Bottom up approach or Tabulation approach
+// Optimized Bottom up approach or Tabulation approach
 int fib(int n) {
     if (n < 2) return n;
-    std::vector<int> dp(n + 1, 0);
-    dp[1] = 1;
-    
+    int prev1 = 1, prev2 = 0;
+    int current = 0;
     for(int i = 2; i <= n; i++){
-        dp[i] = dp[i - 1] + dp[i - 2];
+        current = prev1 + prev2;
+        prev2 = prev1;
+        prev1 = current;
     }
-
-    return dp[n];
+    return current;
 }
+
+
+// Bottom up approach or Tabulation approach
+// int fib(int n) {
+//     if (n < 2) return n;
+//     std::vector<int> dp(n + 1, 0);
+//     dp[1] = 1;
+    
+//     for(int i = 2; i <= n; i++){
+//         dp[i] = dp[i - 1] + dp[i - 2];
+//     }
+
+//     return dp[n];
+// }
+
+
 
 // Top Down approach or Memoization
 // int fibHelper(int n, std::vector<int>& dp){
@@ -23,6 +39,8 @@ int fib(int n) {
 //     dp[0] = 0; dp[1] = 1;
 //     return fibHelper(n, dp);
 // }
+
+
 
 // Normal Recusive solution
 // int fib(int n) {

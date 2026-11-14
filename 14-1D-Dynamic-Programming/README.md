@@ -109,3 +109,36 @@ If `dp[i]` only reads `dp[i-1]` and `dp[i-2]`, you never need the whole array: k
 ## 3. Problem Strategies & Patterns
 
 <!-- NeetCode 150 1-D Dynamic Programming (12): Climbing Stairs · Min Cost Climbing Stairs · House Robber · House Robber II · Longest Palindromic Substring · Palindromic Substrings · Decode Ways · Coin Change · Maximum Product Subarray · Word Break · Longest Increasing Subsequence · Partition Equal Subset Sum -->
+
+### [0] Warm-up: Fibonacci Number (not on the NeetCode 150, not counted)
+
+> Done to learn the four forms before the real problems: naive recursion → memoization `ef2c7e8` → tabulation `7d71aed` → rolled variables (the final, three named ints). I'd read §1 and "understood somewhat". Writing all four made the vocabulary concrete.
+
+* **The Core Pattern:** `dp[i] = dp[i-1] + dp[i-2]`, base cases `dp[0] = 0`, `dp[1] = 1`, answer `dp[n]`. It's the smallest possible DP, so all the effort goes into the *forms*, not the recurrence.
+
+* **The "Gotcha":**
+    * **My first memo wrote to the cache but never read it.** `return dp[n] = fib(n-1) + fib(n-2);` stores every answer and still makes all 2·F(n+1) − 1 calls. **A memo is a check *before* the recursion** (`if (dp[n] != -1) return dp[n];`), not just a store after it.
+    * **`0` can't mean "not computed" when 0 is a real answer** (`fib(0) = 0`). The memo needs a sentinel no real answer can take (`-1`, since Fibonacci is never negative).
+    * **Pre-filling `dp[0]` and `dp[1]` replaces the base-case `if` inside the recursion.** The filled slots stop it. The `n < 2` early return then lives in the entry function, where it also keeps `dp[1] = 1` in bounds when n = 0 (the vector has only one slot).
+    * **Swapping `fibHelper`'s parameter order (on an LLM's style advice) without updating the call site** left the committed top-down version not compiling. Change a signature, grep its callers.
+    * **"Bottom-up or memoization" is a contradiction.** Bottom-up = **tabulation** (a loop, from the base cases up). Top-down = **memoization** (recursion + cache, from n down). Interviewers notice when the two get mixed up.
+
+* **The Struggle & Insights:**
+    * **Tabulation doesn't need the sentinel.** The `-1` existed only because top-down has to ask "is this slot computed yet?". In a loop from 2 up, `dp[i-1]` and `dp[i-2]` are always written before `dp[i]` reads them. **Loop order replaces the check.**
+    * **Rolling: the loop only ever reads the two slots just behind `i`,** so the other n − 1 are dead. Keep two values and shift them each step.
+        * **My first roll was a `std::vector<int>(3)`.** That's still `operator new` + `operator delete` for 12 bytes. GCC `-O2` doesn't remove it. Measured (10M calls, n = 0..30): **vector 15–16 ns, `std::array<int, 3>` 6–7 ns, three named ints 6–7 ns** (14 instructions, all registers). The whole point of O(1) space is that the state lives in registers, and the vector put it back behind a pointer.
+        * **LeetCode said the named ints were *slower*.** It times a microsecond of work in milliseconds, so it's measuring process start-up and server load. Below ~10 ms, LeetCode's runtime says nothing. Measure locally at `-O2`.
+        * **Names in the right order:** `prev1` = one step back, `prev2` = two back, so the shift reads `prev2 = prev1; prev1 = current;`, "everything moves one step older". I had them reversed at first. It still worked (the sum doesn't care), but the shift lines read backwards, which is a trap when writing it from memory.
+        * **`current` is only safe uninitialised because of the `n < 2` return,** which guarantees the loop runs at least once. Initialising it to 0 removes that dependency.
+    * **When top-down actually wins:** when only a *few* states are reachable *and* they overlap. Coins `[50, 100]` → 1000 only ever reaches the 21 multiples of 50, while a table fills all 1001. (The LLM's other example, f(n) → f(n/2) or f(n−1), was misleading: each state calls just *one* smaller state, so nothing is ever reached twice and plain recursion already visits only ~15 states. No overlap = nothing for a memo to save.)
+    * **Recursion depth, measured** (this machine, 8 MB default stack, the memo shape): **n = 10⁵ runs, n = 10⁶ segfaults**, at both `-O0` and `-O2`. ASan's bigger frames lower the limit. On an 8 KB embedded stack it would die at a few hundred. Bottom-up has no depth at all.
+    * **`int` overflows at `fib(47)`** (2,971,215,073 > 2³¹ − 1). LeetCode caps n at 30. Ask about the constraint in an interview.
+
+* **Time & Space Complexity:**
+
+    | Form | Time | Space |
+    | -- | -- | -- |
+    | naive recursion | O(φⁿ), 2·F(n+1) − 1 calls | O(n) stack |
+    | memoization | O(n) | O(n) memo + O(n) stack |
+    | tabulation | O(n) | O(n) table |
+    | **rolled (final)** | **O(n)** | **O(1)**, registers only |
