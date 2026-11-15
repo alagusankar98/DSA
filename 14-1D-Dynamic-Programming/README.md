@@ -261,3 +261,37 @@ If `dp[i]` only reads `dp[i-1]` and `dp[i-2]`, you never need the whole array: k
 * **Time & Space Complexity:**
     * **Time:** **O(n)**: one add-and-max per house.
     * **Space:** **O(1)**: two ints.
+
+### [4] House Robber II
+
+> First pass `170f447`: run House Robber `[3]` on two lines (houses 1..n−1 and houses 0..n−2) and keep the larger, with `n == 1` handled separately. The helper was a lambda that passed its result out through a captured `prev1`, so `prev1` had to be reset by hand between the two calls. Final version: a pure helper (array, start, end) → best money on that line. Before any code I got stuck trying to **rotate** the circle into a line.
+
+* **The Core Pattern:** take or skip on a circle = **two linear runs** (§1 "The Families", §2 Pattern 2). Houses 0 and n − 1 are neighbours, so **at least one of them is not robbed** in any valid answer. Case A: house 0 isn't robbed, so delete it, and houses 1..n−1 are a plain line. Case B: house n − 1 isn't robbed, so houses 0..n−2 are a plain line. Every valid answer is in at least one case, and some (neither end robbed) are in both, which `max` doesn't mind. Answer = `max(line(1, n), line(0, n-1))`.
+
+* **The "Gotcha" — why rotating the circle fails:** my idea was that the only new rule is "0 and n − 1 are connected", so process the houses in the order n − 1, 0, 1, …, n − 2 and run the same algorithm. But **a circle has no ends**: whatever order you pick, the first and last houses of the line are neighbours in the circle. Rotating only moves the broken pair. Smallest case, `[2,3,2]`, where all three houses touch and the answer is **3**:
+
+    | line position | house | value | best so far |
+    | -- | -- | -- | -- |
+    | 0 | 2 | 2 | 2 |
+    | 1 | 0 | 2 | 2 |
+    | 2 | 1 | 3 | 3 + 2 = **5** |
+
+    The 5 robs houses 2 and 1, which are next door. Before rotating, the unchecked pair was (0, n − 1). After, it's (n − 1, n − 2). **The fix isn't a better order. It's a case split that makes the conflict impossible:** decide up front which end stays unrobbed, and the circle becomes a line.
+
+* **The Struggle & Insights:**
+    * **n = 1 is the one special case.** Both runs delete the only house, so both lines are empty and both return 0, but the answer is `nums[0]` (the §2 Pattern 2 discipline). n = 2 needs nothing: each line is one house. n = 0 returns 0 with no crash, because the `n == 1` check never reads `nums[0]` and neither loop runs.
+    * **Give the helper a range, not a copy.** `(start, end)` over the same `const&` vector, so no sub-vector is built. The helper is word for word the `[3]` rolled loop.
+    * **Return values, not captured state.** In the first pass, `prev2` was a local (it reset itself) and `prev1` was captured by reference from outside (it didn't), so line 16's `prev1 = 0;` held the whole thing up. **Measured: with that one line deleted, 80,985 of 100,000 fuzzed circles are wrong** with no error, because the second run starts out believing the first run's answer is its "best so far". As a pure function, both variables are locals that start at 0 on every call, the hand reset and the `bestVal` copy disappear, and `rob` is one line: the max of two calls. **If a helper needs a reset between calls, it should be returning a value.**
+    * **Measured** (`-O2`; all versions fuzzed against a brute force over every valid circle pick, 200,000 cases, ASan/UBSan clean):
+
+        | Version | n = 100 | n = 100,000 |
+        | -- | -- | -- |
+        | lambda with captured `prev1` `170f447` | 112–121 ns | 105 µs |
+        | **pure helper (final)** | 112–115 ns | 105–108 µs |
+        | one fused pass, both lines at once | 115–140 ns | 107–123 µs |
+
+        **The capture cost nothing:** GCC inlines the lambda and keeps `prev1` in a register, so the rewrite was about correctness, not speed. **Fusing both lines into one loop is slower:** the two `if (i < n-1)` / `if (i > 0)` tests inside the loop cost more than reading a 400-byte array twice from L1.
+
+* **Time & Space Complexity:**
+    * **Time:** **O(n)**: two passes of n − 1 houses.
+    * **Space:** **O(1)**: two ints per pass.
