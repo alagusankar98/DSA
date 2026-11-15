@@ -216,3 +216,48 @@ If `dp[i]` only reads `dp[i-1]` and `dp[i-2]`, you never need the whole array: k
     * **Time:** **O(n)**: one add-and-min per step.
     * **Space:** **O(1)**: two ints.
 
+
+### [3] House Robber
+
+> First pass `466420e`: `dp[i]` = most money **if I rob house i**, looking back to i − 2 **and** i − 3, answer `max(dp[n-1], dp[n-2])`. Then `22fc0e3`: `dp[i]` = best money **if the street ended at house i**, a 2-cell lookback, answer `dp[n-1]`. Final `48e2004`: the same, rolled into two variables. Before any of that, a decision tree gave me an odd/even-sum idea that passed both examples. I didn't follow the backwards-table explanation at all ("did not understand anything"). What got me unstuck was a video on a Zonal Computing Olympiad 2014 problem (30 Nov 2013) with the same shape.
+
+* **The Core Pattern:** take or skip (§1 "The Families", §2 Pattern 2). **`dp[i]` = the most money from houses 0..i, whether or not house i itself is robbed.** At house i you rob it (`nums[i] + dp[i-2]`, so house i − 1 is off-limits) or skip it (`dp[i-1]`), and you keep the larger. Rolled: two ints, both starting at 0, and no base cases.
+
+* **The "Gotcha" — why odd/even sums fail:** I drew the decision tree for `[1,1,3,3]` and `[2,9,8,3,6]`. Both best picks looked like every other house, so I coded "max of the even-index sum and the odd-index sum". It passed both examples and failed **`[2,1,1,2]`**:
+
+    | index | 0 | 1 | 2 | 3 | total |
+    | -- | -- | -- | -- | -- | -- |
+    | even sum | ✓ | · | ✓ | · | 3 |
+    | odd sum | · | ✓ | · | ✓ | 3 |
+    | **best** | ✓ | · | · | ✓ | **4** |
+
+    The best pick skips **two** houses in a row. Odd/even forces the gap between robbed houses to be exactly one. **The gap can be one or two, never three:** with three skipped houses, you can always rob the middle one too, since the values are never negative. So **not robbing is a real choice**, and my tree didn't have a branch for it. I had branched on "which house next" and should have branched on "this house: rob or skip".
+
+* **The Struggle & Insights:**
+    * **The ZCO bridge.** In the video's problem, `dp[i]` was the minimum time **if I work on day i**, built as `cost[i] + min` of three earlier values (every place the previous working day could be), with a final min over the last few cells because the last day didn't have to be worked. I carried it over as "`dp[i]` = most money if I rob house i", and first wrote `dp[i] = nums[i] + dp[i-2]`. **That's the odd/even sum again:** it says the previous robbed house is *always* i − 2, so on `[2,1,1,2]` it gives `dp[3] = 2 + dp[1] = 3`. The fix was the ZCO question, "if I rob house i, where could the previous robbed house be?": not i − 1 (next door), i − 2 or i − 3 (one or two skipped), and never i − 4 (see above). So `nums[i] + max(dp[i-2], dp[i-3])`, and the answer is `max(dp[n-1], dp[n-2])` because the last house might be skipped. Correct first time (200,000 fuzzed arrays against brute force, ASan/UBSan clean).
+    * **Why "if I rob house i" needs a 3-cell lookback here but only 2 in Min Cost Climbing Stairs `[2]`:** there, you *have* to land on i − 1 or i − 2, because a jump is at most two steps. Here, skipping is free, so the gap varies, and a "must rob i" state has to list every possible gap. That costs three hand-written base cases (`dp[2] = nums[0] + nums[2]`), an `n < 3` path, and the final `max`.
+    * **What "whether or not house i is robbed" means:** I didn't get it at first. The phrasing that worked: **"if the street ended at house i, what's the most I could steal?"** House i may or may not be in that best pick. The two definitions, side by side on `[2,1,1,2]`:
+
+        | i | street if it ended here | "must rob i" (`466420e`) | "street ends at i" (`22fc0e3`) |
+        | -- | -- | -- | -- |
+        | 0 | `[2]` | 2, rob {0} | 2, rob {0} |
+        | 1 | `[2,1]` | **1**, forced to rob {1} | **2**, rob {0}, house 1 left alone |
+        | 2 | `[2,1,1]` | 3, rob {0,2} | 3, rob {0,2} |
+        | 3 | `[2,1,1,2]` | 4, rob {0,3} | 4, rob {0,3} |
+
+        **The i − 3 case is already inside `dp[i-2]`:** "the best for the street ending at i − 2" covers both "robbed i − 2" and "robbed i − 3, skipped i − 2". So the lookback drops to two, the last cell is the answer, and the `n < 3` path disappears. `dp[1] = max(nums[0], nums[1])` is exactly "the street `[a, b]`: take the better house".
+    * **"Why from the last?"** The first explanation I got filled a table from the back, with `f(i)` = the best from house i **to the end**. That reads from the right, so it has to be filled right to left. **The direction comes from the definition:** fill so that every cell a formula reads is already there. `f` (suffix) and the "street ends at i" `dp` (prefix) are mirror images with the same answer. Front-to-back is the usual one, and it matches the stairs problems.
+    * **Rolling (`48e2004`):** keep "best up to the previous house" and "best up to the one before it", both starting at **0**, which stands for the houses before index 0. Then every house goes through the same update: one house gives `max(nums[0] + 0, 0)`, and **an empty street returns 0**. Both earlier versions crashed on empty input (the first in `max_element` of an empty range, the second reading `nums[0]`). LeetCode's n ≥ 1 hides that.
+    * **Measured** (`-O2`):
+
+        | Version | n = 100 | n = 100,000 |
+        | -- | -- | -- |
+        | "must rob i", 3-lookback `466420e` | 136–139 ns | 133–135 µs |
+        | "street ends at i", table `22fc0e3` | 65–68 ns | 58–62 µs |
+        | **rolled `48e2004`** | **55 ns** | **52–56 µs** |
+
+        **The 2× was the 3-cell lookback, not the `vector`.** The review first blamed the allocation, and the table version disproved that: it matched a two-int version at both sizes. At n = 100 one `malloc` is spread over 100 steps (Min Cost's 3.3× was at n = 10). Rolling gave the last 10–15%. In an interview it matters as the **O(1) space** answer to the follow-up, not as a speed-up.
+
+* **Time & Space Complexity:**
+    * **Time:** **O(n)**: one add-and-max per house.
+    * **Space:** **O(1)**: two ints.
