@@ -1,24 +1,26 @@
-std::string formPalindrome(std::string_view s, int left, int right){
+std::pair<int, int> formPalindromeIndices(std::string_view s, int left, int right){
     const int n = static_cast<int>(s.size());
     while(left >= 0 && right < n && (s[left] == s[right])){
         left--;
         right++;
     }
-    return std::string(s.data() + left + 1, ((right - 1) - (left + 1) + 1));
+    return {(left + 1), (right - 1)};
 }
 std::string longestPalindrome(std::string_view s) {
+    if(s.empty()) return "";
     const int n = static_cast<int>(s.size());
-    std::string resultString;
+    int start = 0;
+    int end = 0;
 
     for(int i = 0; i < n; i++){
-        auto oddPalindromStr = formPalindrome(s, i, i); // Odd length palindrome
-        auto evenPalindromStr = formPalindrome(s, i, i+1); // Odd length palindrome
-        if(oddPalindromStr.size() > resultString.size()){
-            resultString = std::move(oddPalindromStr);
+        if(auto [evenStart, evenEnd] = formPalindromeIndices(s, i, i+1); (evenEnd - evenStart) > (end - start)){
+            start = evenStart;
+            end = evenEnd;
         }
-        if(evenPalindromStr.size() > resultString.size()){
-            resultString = std::move(evenPalindromStr);
+        if(auto [oddStart, oddEnd] = formPalindromeIndices(s, i, i); (oddEnd - oddStart) > (end - start)){
+            start = oddStart;
+            end = oddEnd;
         }
     }
-    return resultString;
+    return std::string(s.data() + start, (end - start) + 1);
 }
