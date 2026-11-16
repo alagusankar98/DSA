@@ -350,3 +350,38 @@ If `dp[i]` only reads `dp[i-1]` and `dp[i-2]`, you never need the whole array: k
 * **Time & Space Complexity:**
     * **Time:** **O(n²)** worst case (all one letter); close to O(n) on typical text. DP table: Θ(n²) always; with the early exit, O(n · longest palindrome) for the filling, plus the Θ(n²) table build.
     * **Space:** **O(1)** besides the returned string. DP table: O(n²), or O(n) with three rolled diagonals.
+
+### [6] Palindromic Substrings
+
+> First pass `b3e7170`: the `isPal` DP table from `[5]`, with d = 0 and d = 1 folded into one rule and the two-empty-diagonals early exit, counting true cells. Final `c15ffe4`: expand around the 2n − 1 centres and add up how many palindromes each centre holds. Coming straight off `[5]`'s DP, I reached for the table first, though `[5]`'s own lesson was that expanding is the better answer.
+
+* **The Core Pattern:** expand around 2n − 1 centres (§1 "The Families", §2 Pattern 6), **counting instead of maximising**. Every successful expansion step at a centre is exactly one more palindrome: (i, i) itself, then (i − 1, i + 1), and so on. So a centre's count is **the number of steps it expanded**, and the answer is the sum over all centres. `[5]`'s `formPalindromeLength` helper is reused unchanged. Only the step from length to count is new.
+
+* **The "Gotcha":**
+    * **Turning a length into a count.** I reused `[5]`'s `(L − 1) / 2` twice (first with `i` subtracted, then without) before writing out what a length means at each kind of centre:
+
+        | centre | lengths | palindromes held | count |
+        | -- | -- | -- | -- |
+        | odd (i, i) | 1, 3, 5, 7 | 1, 2, 3, 4 | **(L + 1) / 2** |
+        | even (i, i+1) | 0, 2, 4, 6 | 0, 1, 2, 3 | **L / 2** |
+
+        `(L − 1) / 2` is the **start offset** (how far a palindrome reaches left of its centre), not how many it holds. The version with `i` was summing positions. **When a formula won't come, tabulate the small cases and fit it.** That worked first time once I made myself do it.
+    * **Merging the two into `(odd + even + 1) / 2` is only safe because of parity.** Integer division rounds down, so (a + b) / 2 ≠ a/2 + b/2 in general (1/2 + 1/2 = 0, but (1 + 1)/2 = 1). Here `odd` is always odd (so `odd + 1` is even) and `even` is always even, so each half divides exactly and nothing is rounded away. The committed line keeps the long form as a comment.
+    * **`count += count += x`: a typo that doubles the total.** The inner `+=` runs first and its result is added again, so each step does `count = 2 · (count + x)`. `"a"` returns 2, and `"acbbc"` returns 78 instead of 7. **No warning, no sanitizer:** since C++17, the right side of `a += b` is fully evaluated before the left, so the line is well-defined and simply wrong. Before C++17 it was undefined behaviour. The fuzzer caught it.
+
+* **The Struggle & Insights:**
+    * **The DP first pass was good DP and the wrong choice.** One loop from d = 0 with `s[i] == s[j] && (d < 2 || dp[i+1][j−1])`, so there was no separate base loop and no seeding to get wrong, and `count += dp[i][j]` had no branch. Correct on the first try. But expanding needs no table, and counting needs even less than `[5]` did: no start, no best. **Measured at n = 1,000: table 478–567 µs, expand 2.4–3.6 µs on random text (~200×).** The table's cost is again mostly *building* it: 1,001 allocations and 1 MB zeroed. Even rolled into three arrays (the `[5]` follow-up, which I already knew) it's 5–47 µs, 2–10× behind expanding.
+    * **`currentAny = currentAny || dp[i][j]` vs `|=`: no difference at `-O2`.** My idea was that `||` short-circuits, so it skips reading `dp[i][j]` once the flag is true. I compared the assembly. Both inner loops are branch-free and differ only in register names. Two reasons. **The value is already in a register** (`count += dp[i][j]` loaded it on the line before). And **`||` only promises the right side behaves as if it weren't evaluated:** when evaluating it has no visible effect, the compiler may compute it anyway (the "as-if" rule) and drop the branch, because one `or` is cheaper than a branch per cell. At `-O0` the `||` version really does branch, which is where the intuition comes from. **Short-circuiting matters when the right side has side effects, is expensive, or would be invalid to evaluate:** `d < 2 || dp[i+1][j−1]` is exactly that last case, where the short-circuit is what prevents the out-of-range read.
+    * **Worst case fits in `int`:** 1,000 `'a'`s gives n(n+1)/2 = 500,500, since every substring is a palindrome.
+    * **Manacher counts too:** the answer is the sum of the palindrome radius at every centre, O(n). Measured: 6–7 µs on all-`'a'` vs ~280 µs expanding, but 2× behind on random text. Name it, don't code it.
+    * **Measured** (`-O2`, n = 1,000; all versions fuzzed against brute force over every substring, 200,000 strings, ASan/UBSan clean):
+
+        | input | DP table `b3e7170` | 3 rolled arrays + exit (scratch) | **expand `c15ffe4`** | Manacher (scratch) |
+        | -- | -- | -- | -- | -- |
+        | random, 26 letters | 478–487 µs | 5 µs | **2.4–2.5 µs** | 5–8 µs |
+        | random, 2 letters | 557–567 µs | 35–47 µs | **3.6 µs** | 6–14 µs |
+        | all `'a'` | 1650–1710 µs | 420–520 µs | 270–300 µs | **6–7 µs** |
+
+* **Time & Space Complexity:**
+    * **Time:** **O(n²)** worst case (all one letter); close to O(n) on typical text.
+    * **Space:** **O(1)**.
