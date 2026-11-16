@@ -295,3 +295,41 @@ If `dp[i]` only reads `dp[i-1]` and `dp[i-2]`, you never need the whole array: k
 * **Time & Space Complexity:**
     * **Time:** **O(n)**: two passes of n − 1 houses.
     * **Space:** **O(1)**: two ints per pass.
+
+### [5] Longest Palindromic Substring
+
+> First pass `de7b458`: expand around every centre, with a helper that builds a `std::string` for each candidate. Then `ac6cd06`: the helper returns (start, end) indices and the string is built once at the end. Final `d585508`: the helper returns a **length**, and the start is recovered as `i − (L − 1) / 2`. "Can't even come up with recursion, let alone DP." I read some solutions, and the only one that made sense was expanding from a character. Then I had two worries: which answer to return when every palindrome has length 1, and whether one pass can handle odd and even. The off-by-one in the helper took an LLM conversation with two wrong attempts.
+
+* **The Core Pattern:** expand around **2n − 1 centres** (§1 "The Families", §2 Pattern 6). Every palindrome has a centre: a **character** (odd length, `aba`) or the **gap between two characters** (even length, `abba`). There are n of the first and n − 1 of the second. At each `i`, expand from (i, i) and from (i, i+1) with the **same** helper (while in bounds and `s[left] == s[right]`, step both outward). Only the starting pair differs. Starting the odd case at (i, i) makes the first comparison a character against itself, so a separate "check i − 1 and i + 1" step isn't needed.
+
+* **The "Gotcha":**
+    * **Odd-only misses every even palindrome.** `"cbbd"` → `"bb"` only exists at the gap centre (1, 2). With character centres alone, the answer would be `"c"`.
+    * **"abcd": which one-letter answer?** Any of them. The problem accepts any longest palindrome (LeetCode's `"babad"` takes `"bab"` or `"aba"`). Replacing only on a strictly longer length (`>`) keeps the first one found. A single character is always a palindrome, so for n ≥ 1 the answer is at least 1 long.
+    * **The off-by-one.** The loop stops when the check **fails**, so `left` and `right` sit one step **past** the palindrome on each side. The palindrome is `left + 1 .. right − 1`, so **start = `left + 1`** and **length = (right − 1) − (left + 1) + 1 = `right − left − 1`**. My two wrong attempts:
+        * **`std::abs(left)`:** treated `left = −1` as a bad value to clean up. It's a real position, "one before index 0", and `left + 1 = 0` already handles it.
+        * **`(right − 1) − (left − 1) + 1`:** a sign slip. The first valid index is one step *right* of where `left` stopped. On `"babad"` at (0, 0), this gives 3 for a palindrome of length 1.
+    * **The LLM's test comment was wrong too:** it said centre (1, 2) of `"babad"` gives `bab`. (1, 2) is the gap `a|b`, which fails immediately. `bab` comes from the character centre (1, 1).
+
+* **The Struggle & Insights:**
+    * **The recursion was hiding in the expansion:** `s[i..j]` is a palindrome **exactly when** its ends match **and** `s[i+1..j−1]` is a palindrome. That's the textbook `isPal[i][j]` table. Expanding checks the same rule from the inside out (the inside was confirmed one step earlier), so it's the DP's logic with nothing stored.
+    * **"Isn't a table on i and j 2-D DP?"** Yes. By §1's own definition (the state needs one number), the `isPal` table is 2-D DP: n² states. NeetCode files the problem under 1-D because it groups by **input shape** (one string) rather than state shape. What matters is the cost (next bullet).
+    * **The DP table, measured** (n = 1,000, `-O2`, scratch only): **920–950 µs on random text vs 3–4 µs expanding (~250×)**, and still 2.3× slower on expanding's worst case, all `'a'`. The table always fills all n²/2 cells, plus a megabyte of memory. Expanding stops after a step or two at most centres on real text. Same O(n²) on paper, very different in practice. **Its value is the pattern, not the speed:** it's the first *interval* DP, where the state is a range (i, j), and that comes back in Burst Balloons (2-D DP). **Fill order:** `isPal[i][j]` reads `isPal[i+1][j−1]`, one row *down* and one column *left*, so the table fills by increasing length, or with `i` from n − 1 *down*. It's the "why from last?" question again: the formula decides the direction.
+    * **Don't build a string per candidate.** The first pass built 2n `std::string`s. libstdc++ stores strings of up to 15 characters inside the object (the small-string optimisation), so short ones don't `malloc`, but each is still built, compared and destroyed, and long palindromes allocate and copy their whole length. Tracking (start, length) and calling `substr` once: **2.5–4× on typical input** (7.7–12.7 µs → 2.5–5 µs at n = 1,000).
+    * **`s.data() + left + 1` was technically UB.** It evaluates as `(s.data() + left) + 1`, and with `left = −1` the first step makes a pointer **one before the start** of the array. One-past-the-end is legal; one-before-the-start isn't. No sanitizer reports it (checked with `-fsanitize=undefined,pointer-overflow`), and every compiler does the obvious thing, but it's the line a systems interviewer circles. Returning indices or a length makes it impossible.
+    * **(start, end) can't say "nothing found".** `ac6cd06`'s first draft started at `start = end = 0`, which is one character, so `""` returned a 1-byte string holding `\0` (`std::string`'s terminator read as data, and a read out of bounds for a `string_view` that isn't null-terminated). The committed version guards it. **(start, length) starting at (0, 0) means "nothing" by itself**, with no guard and no `+ 1`.
+    * **Getting the start from the length:** expansion is symmetric, so a palindrome of length L at centre i reaches the same distance each way. **start = `i − (L − 1) / 2`** for both kinds, with integer division: odd L = 2k + 1 gives `i − k`, and even L = 2k gives `i − k + 1`, because the left half ends at `i`. Checked on `"babad"` (i = 2, L = 3 → 1, `aba`), `"cbbd"` (i = 1, L = 2 → 1, `bb`) and `"abba"` (i = 1, L = 4 → 0). With lengths, taking `max(odd, even)` first means one comparison per centre.
+    * **A comparison against a stale best.** The first (start, end) draft computed the best length once, before both checks, so the second check could in principle replace a longer palindrome with a shorter one. Instrumented over 2,000,000 random strings it **never** did, and it can't: both centres at the same `i` beating the old best needs a run of one letter, where the even centre at `i − 1` was already at least as long. Correct, but only through a proof the reader has to do. Compare against the current best each time.
+    * **Beyond O(n²):** Manacher's algorithm is O(n). It reuses the mirror image of palindromes already found inside a bigger one, so it never re-checks characters. Measured: 40× on all-`'a'`, but **2× slower on random text** at n = 1,000 (two arrays plus bookkeeping). Know the name and the mirror idea. Interviews don't expect the code. Skipping centres that can't beat the best (a centre at `i` reaches at most about 2·min(i, n−1−i)+2) halves the worst case and does nothing on typical input.
+    * **Measured, all versions** (`-O2`, n = 1,000; every version fuzzed against brute force over every substring, 200,000 strings, ASan/UBSan clean):
+
+        | input | first pass `de7b458` | (start, end) `ac6cd06` | **length `d585508`** |
+        | -- | -- | -- | -- |
+        | random, 26 letters | 7.7–11.1 µs | 3.0 µs | **2.5–2.8 µs** |
+        | random, 2 letters | 12.6–12.7 µs | 4.9–5.3 µs | **4.6–4.9 µs** |
+        | all `'a'` | 352–411 µs | 300–368 µs | 299–365 µs |
+
+        The two index versions tie within noise. An apparent 15–20% worst-case gap disappeared on back-to-back reruns (the run-to-run spread was bigger).
+
+* **Time & Space Complexity:**
+    * **Time:** **O(n²)** worst case (all one letter); close to O(n) on typical text.
+    * **Space:** **O(1)** besides the returned string.
