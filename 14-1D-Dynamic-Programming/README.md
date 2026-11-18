@@ -385,3 +385,54 @@ If `dp[i]` only reads `dp[i-1]` and `dp[i-2]`, you never need the whole array: k
 * **Time & Space Complexity:**
     * **Time:** **O(n²)** worst case (all one letter); close to O(n) on typical text.
     * **Space:** **O(1)**.
+
+### [7] Decode Ways
+
+> Brute-force recursion through three wrong versions, then memo `e7d619b`, table `0eee9b4` (its commit message says "memoization", but it holds the table), rolled `f1f816d`, and finally a branch-free rolled loop after the review. My first attempt counted valid **pieces** (one loop for 1-digit, one for 2-digit), and only after coding it did I see that a "way" has to decode the **whole** string. Then I hit the real wall: **"how can you say a way exists before you've read to the end?"** Two explanations bounced off ("I still don't understand"). The tree of walks got through. Even with a passing memo, I felt I didn't understand what I'd written.
+
+* **The Core Pattern:** step recurrence with **gates** (§1 "The Families", §2 Pattern 1). It's Climbing Stairs, where each step is allowed only if the digits it consumes form a letter. **`finish(p)` = the number of ways to finish decoding from position `p` to the end.** From `p`, bite 1 digit (allowed if it isn't `'0'`) and continue from `p + 1`, or bite 2 digits (allowed if 10–26) and continue from `p + 2`. Add the two, where a blocked bite contributes 0. `finish(n) = 1`, and the answer is `finish(0)`. Filled from n down to 0, then rolled into two ints.
+
+* **The mental model — a way is counted only when it reaches the end:** you never decide in advance that a way exists. You **walk**: bite, move, bite again, and count a walk only at the moment the string runs out exactly. `"226"`:
+
+    ```
+    start (226)
+    ├── "2"  → (26)
+    │     ├── "2"  → (6) ── "6" → END ✓    2|2|6
+    │     └── "26" → END ✓                 2|26
+    └── "22" → (6) ── "6" → END ✓          22|6
+    ```
+
+    A walk that gets stuck (`"206"`: `2` → `06`, where neither `0` nor `06` is a letter) contributes 0, and nothing was counted early. **"(6)" appears twice:** once after `2|2` and once after `22`, with the same remaining digits and the same answer. That repeat is the DP. The prefix framing ("if the message stopped here, how many readings?", the same as House Robber's "if the street ended here") is the mirror image, filled front to back, but it didn't click for me. The walk did.
+
+* **The "Gotcha" — three wrong recursions, one bug each:**
+    1. **The next bite started at `start + 1` after a 2-digit bite.** My helper took a chosen bite (start, end) and recursed with `start + 1` in both calls. After a 2-digit bite that reuses its second digit: on `"226"` it produced `22|2|6` and `22|26` (index 1 used twice), missed `22|6`, and returned **4**. `"2101"` and `"11106"` gave 0. **The next bite starts at `end + 1`**, the first unused digit. The same design is why main needed two calls: the helper meant "this bite is already chosen", so the caller had to choose the first one. Changing the helper to mean **"the position where the next bite begins"** gave one call from main, with both bites tried inside it.
+    2. **The 2-digit check was backwards:** `s[start] == '2' && s[start+1] > '6'` is true exactly for **27–29**, the 2-digit bites that *aren't* letters. Valid means `'1'` with anything (10–19), or `'2'` with at most `'6'` (20–26). A leading `'0'` is already excluded by the outer gate, which is why the 2-digit test is nested inside it.
+    3. **The base case `start + 1 == n` fired with one digit still left,** counting it unchecked. `"10"` counted the invalid `1|0`, and got the right total only because bug 2 had skipped the real answer `10` (two bugs cancelling). Worse, after a 2-digit bite ending exactly at the end, `start` became `n`, the base never fired, and the code read `s[n]`. **ASan: heap-buffer-overflow** when the buffer has no `'\0'` after it. `std::string`'s terminator hides it. **The base case is `start == n`: nothing left.**
+
+* **The Struggle & Insights:**
+    * **Correct but exponential:** with the bugs fixed and nothing reused, all-`'1'` strings (every split valid) grow like Fibonacci. Measured: **n = 30: 8 ms, 35: 72 ms, 40: 817 ms**, about 10× per 5 digits, and around 10²⁰ calls at LeetCode's n = 100. It's the Fibonacci `[0]` lesson again.
+    * **Why each recursive call sits inside an `if`** (I'd only seen two calls side by side). In Climbing Stairs both moves are always legal, so it's `ways(n−1) + ways(n−2)` unconditionally. Here a move is legal only if its bite is a letter, so each call is gated and a blocked move adds 0. It's still "two calls added", with each one switched off when its move is illegal. Checking the gate **before** moving (rather than at the top of the next call, as in my first try) is what made the "where does the next bite start" bug disappear.
+    * **Why `start == n` returns 1:** how many ways are there to finish decoding nothing? Exactly one, because you're done. Every complete walk arrives there exactly once, so that 1 is the walk's ✓. If it returned 0, every answer would be 0, because the base case is the only place a 1 enters. **Dead ends need no base case:** no bite allowed means no calls, so 0 + 0. The same "one way to do nothing" as Climbing Stairs' ways(0) = 1.
+    * **Why only n + 1 states:** `s`, `n` and the memo are the same in every call, and only `start` changes. Finishing from `start` doesn't care how you got there (in `"226"`, position 2 is reached by `2|2` or `22`, and either way `"6"` is left). `start` takes the values 0..n, so there are **n + 1 distinct questions**, and every other call was a repeat.
+    * **Why `start` never passes `n`:** the `start + 1` call happens only after `start == n` returned, so `start ≤ n − 1`. The `start + 2` call happens only when `start + 1 < n` (**"two digits are left"**), so `start + 2 ≤ n`. A bite that fits inside the string can't carry you past its end. Delete that guard and position n − 1 calls n + 1, which is out of bounds in the n + 1-slot memo.
+    * **Memo → table is mechanical,** except for one decision: the memo becomes the table, the base case becomes `dp[n] = 1`, each call becomes a read, the gates stay as they are, and the answer is `dp[0]`. **The decision is the loop direction:** the recursion did the reads at `start + 1` and `start + 2` first, so the loop must too, which means running **from n − 1 down to 0**. **The `-1` sentinel disappears**, because the loop order guarantees every cell read is already written (the Fibonacci "loop order replaces the check" lesson). It matters here because 0 is a real answer (`"06"`), so 0 couldn't have been the sentinel anyway.
+    * **Rolled:** `next1` (ways from one ahead) starts at 1 (`dp[n]`), and `next2` starts at 0 for the nonexistent `dp[n+1]`. That value is never read, because at `i = n − 1` the two-digits-left guard skips the 2-digit branch. Shift: `temp` first, then `next2 = next1`, `next1 = temp`.
+    * **Overflow is a precondition, not a guarantee.** All-`'1'` counts are Fibonacci numbers and pass `INT_MAX` at **46 characters**. 100 `'1'`s is about 1.3 × 10¹⁸, which UBSan reports as signed overflow (it returned −1,869,596,475). LeetCode promises the answer fits in 32 bits, so **say it out loud** in an interview: "int because the problem guarantees 32 bits; otherwise `int64_t` (fits n = 100) or modulo what they ask." A sentence, not a code change, unless they ask for big inputs.
+    * **Branch-free (after the review, constant factor only):** each digit decided two unpredictable branches (`'0'`? and 10–26?), so random digits mispredict often. Three ideas:
+        * **a comparison is already 0 or 1**, so `(s[i] != '0') * next1` is "`next1` if allowed",
+        * **test the number, not the characters**: build `two` and range-check it against 10–26, so `"06"` = 6 fails by itself and no nesting is needed,
+        * **peel the last digit out of the loop**: `next1 = (s[n−1] != '0')`, `next2 = 1`, then loop from n − 2, so `s[i+1]` always exists and the bounds check is gone.
+
+        **Measured: 244–261 → 104–110 ns (~2.3×).** It's not an interview item; mention it only if asked about hardware. **The peel brings back an empty-input hole:** with n = 0, `s[n−1]` is `s[−1]` (ASan: SEGV). The rolled version returned 1 for `""`. LeetCode's n ≥ 1 hides it, but the peeled form needs its own `n == 0` line.
+    * **Measured** (`-O2`, n = 100, 10,000 random-digit strings whose answers fit in `int`; every version fuzzed against an independent DP on 200,000 strings of length 1–40, buffers without a terminator, ASan/UBSan clean):
+
+        | version | ns per call |
+        | -- | -- |
+        | memo `e7d619b` | 664–670 |
+        | table `0eee9b4` | 283–286 |
+        | rolled `f1f816d` | 243–261 |
+        | **branch-free rolled** | **104–110** |
+
+* **Time & Space Complexity:**
+    * **Time:** **O(n)**: one or two gated additions per digit (the brute-force recursion was exponential, Fibonacci in the worst case).
+    * **Space:** **O(1)**: two ints (memo and table: O(n); memo also O(n) stack).
