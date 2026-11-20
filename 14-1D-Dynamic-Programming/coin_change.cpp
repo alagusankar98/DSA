@@ -6,13 +6,13 @@ int coinChangeHelper(const std::vector<int>& coins, int amount, std::vector<int>
     int minCoinCount = std::numeric_limits<int>::max();
     for(const int coin : coins){
         if(int difference = (amount - coin); difference >= 0){
-            dp[difference] = coinChangeHelper(coins, difference, dp);
-            if(dp[difference] < minCoinCount) {
-                minCoinCount = dp[difference];
+            int count = coinChangeHelper(coins, difference, dp);
+            if(count < minCoinCount) {
+                minCoinCount = count;
             }
         }
     }
-    return minCoinCount == std::numeric_limits<int>::max() ? minCoinCount : 1 + minCoinCount;
+    return dp[amount] = (minCoinCount == std::numeric_limits<int>::max()) ? minCoinCount : 1 + minCoinCount;
 }
 int coinChange(const std::vector<int>& coins, int amount) {
     std::vector<int> dp(amount + 1, -1);
