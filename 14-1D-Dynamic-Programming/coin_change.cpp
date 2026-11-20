@@ -1,24 +1,44 @@
-int coinChangeHelper(const std::vector<int>& coins, int amount, std::vector<int>& dp){
-    if (amount == 0) return 0;
-
-    if(dp[amount] != -1) return dp[amount];
-
-    int minCoinCount = std::numeric_limits<int>::max();
-    for(const int coin : coins){
-        if(int difference = (amount - coin); difference >= 0){
-            int count = coinChangeHelper(coins, difference, dp);
-            if(count < minCoinCount) {
-                minCoinCount = count;
+int coinChange(const std::vector<int>& coins, int amount) {
+    std::vector<int> dp(amount + 1, std::numeric_limits<int>::max());
+    
+    dp[0] = 0;
+    for(int fillAmount = 1; fillAmount <= amount; fillAmount++){
+        int minCoinCount = std::numeric_limits<int>::max();
+        for(const int coin : coins){
+            if(int difference = (fillAmount - coin); difference >= 0){
+                int count = dp[difference];
+                if(count < minCoinCount) {
+                    minCoinCount = count;
+                }
             }
         }
+        dp[fillAmount] = (minCoinCount == std::numeric_limits<int>::max()) ? minCoinCount : 1 + minCoinCount;
     }
-    return dp[amount] = (minCoinCount == std::numeric_limits<int>::max()) ? minCoinCount : 1 + minCoinCount;
+
+    return (dp[amount] == std::numeric_limits<int>::max()) ? -1 : dp[amount];
 }
-int coinChange(const std::vector<int>& coins, int amount) {
-    std::vector<int> dp(amount + 1, -1);
-    int minCount = coinChangeHelper(coins, amount, dp);
-    return (minCount == std::numeric_limits<int>::max()) ? -1 : minCount;
-}
+
+// int coinChangeHelper(const std::vector<int>& coins, int amount, std::vector<int>& dp){
+//     if (amount == 0) return 0;
+
+//     if(dp[amount] != -1) return dp[amount];
+
+//     int minCoinCount = std::numeric_limits<int>::max();
+//     for(const int coin : coins){
+//         if(int difference = (amount - coin); difference >= 0){
+//             int count = coinChangeHelper(coins, difference, dp);
+//             if(count < minCoinCount) {
+//                 minCoinCount = count;
+//             }
+//         }
+//     }
+//     return dp[amount] = (minCoinCount == std::numeric_limits<int>::max()) ? minCoinCount : 1 + minCoinCount;
+// }
+// int coinChange(const std::vector<int>& coins, int amount) {
+//     std::vector<int> dp(amount + 1, -1);
+//     int minCount = coinChangeHelper(coins, amount, dp);
+//     return (minCount == std::numeric_limits<int>::max()) ? -1 : minCount;
+// }
 
 // Normal recursive solution
 
