@@ -1,18 +1,12 @@
 int maxProduct(const std::vector<int>& nums) {
     int maxResult = std::numeric_limits<int>::min();
-    const int n = static_cast<int>(nums.size());
-    int product = 1;
+    int currentMinProduct = 1;
+    int currentMaxProduct = 1;
     for(const int num : nums) {
-        product *= num;
-        maxResult = std::max(maxResult, product);
-        if(product == 0) product = 1;
-    }
-
-    product = 1;
-    for(int i = n - 1; i >= 0; i--) {
-        product *= nums[i];
-        maxResult = std::max(maxResult, product);
-        if(product == 0) product = 1;
+        if(num <  0) std::swap(currentMaxProduct, currentMinProduct);
+        currentMaxProduct = std::max(num, currentMaxProduct * num);
+        currentMinProduct = std::min(num, currentMinProduct * num);
+        maxResult = std::max(maxResult, currentMaxProduct);
     }
     return maxResult;
 }
