@@ -477,3 +477,29 @@ If `dp[i]` only reads `dp[i-1]` and `dp[i-2]`, you never need the whole array: k
 * **Time & Space Complexity:**
     * **Time:** **O(amount × k)**, where k = number of coins (the accumulator and plain recursions were exponential).
     * **Space:** **O(amount)**: one table (memo: also O(amount) stack depth).
+
+### [9] Maximum Product Subarray
+
+> First pass `0a1e77c`: a forward scan multiplying every element and resetting on 0. Optimal `cc02337`: track `currentMax` and `currentMin` at every index, swap on negatives, and keep a global `maxResult`. The wall was not the swap trick but grasping *why* a single forward pass misses valid subarrays — specifically, when a negative drags the running product down and a later element alone would have been larger.
+
+* **The Core Pattern:** best run ending here (§1 "The Families", §2 Pattern 5). **`currentMax` = the largest product of any contiguous subarray ending at the current index. `currentMin` = the smallest (most negative).** At each element, there are three candidates for the best product ending here: the element alone (start fresh), extend the previous max, or extend the previous min — because a negative times a large negative is a large positive. The answer is the global max over all `currentMax` values.
+
+* **The mental model — the optimist and the doomsday tracker:**
+    * `currentMax` (the optimist) hoards the largest product, hoping to extend it.
+    * `currentMin` (the doomsday tracker) hoards the most negative product, waiting for a negative number to flip it into something huge.
+    * When `num < 0`, **swap them before multiplying**: a negative flips signs, so the old max becomes the new worst candidate, and the old min becomes the new best.
+    * `std::max(num, currentMax * num)` lets the optimist either extend the previous streak or start fresh from `num` alone — which is how it recovers after a 0 or a bad streak.
+
+* **The "Gotcha" — why a single forward pass fails:**
+    * **My first intuition:** multiply all elements left to right into a `product` variable, track `maxResult`, and reset `product = 1` on encountering 0. This misses any subarray that *starts after index 0* or *ends before a dragging negative*.
+    * **`[3, -1, 4]`:** forward pass gives 3, −3, −12 → `maxResult = 3`. But the answer is **4** (the element alone). The product went negative after `−1`, and the forward pass never "restarted" from index 2. Even comparing `nums[i]` individually doesn't fix it: `[2, -5, -2, -4, 3]` gives a forward max of 20, but `[-2, -4, 3] = 24` beats it, because dropping the first `−5` lets the two later negatives cancel.
+    * **A missing global answer tracker was the actual bug in my first "correct" attempt.** `currentMax` only tracks the best product ending at the current index — it gets overwritten at every step. On `[2, 3, -2, 4]`, `currentMax` peaks at 6 (index 1), drops to −2 at index 2, and ends at 4. Without a separate `maxResult` updated on every iteration, the peak is lost. **`maxResult = std::max(maxResult, currentMax)` is the line that remembers.**
+
+* **The Struggle & Insights:**
+    * **Starting from `i = 0` instead of `i = 1`.** My first version initialised `currentMax = currentMin = maxResult = nums[0]` and looped from 1. The LLM showed that initialising `currentMax = currentMin = 1` (the multiplicative identity) and `maxResult = INT_MIN` lets the loop start from 0 with no special case. At `i = 0`, `1 * nums[0] = nums[0]`, and `std::max(nums[0], nums[0]) = nums[0]`, so the first element bootstraps itself. Swapping 1 and 1 is a no-op. `INT_MIN` guarantees the first iteration overwrites `maxResult` even if all elements are negative.
+    * **The swap is the "aha!" moment, but the `max(num, ...)` is the safety net.** The swap puts the right scout in front of the right formula before multiplying by a negative. But `std::max(num, currentMax * num)` is what handles the 0 case and the "start fresh" case: after a 0, `currentMax * 0 = 0`, and if `num` is positive, it starts a new subarray. Without the `max`, there's no way to drop a poisoned prefix.
+    * **The range-for loop is cleaner than indexing.** Since the state is just two rolling products and a global max, there's no need for `i` at all. `for (const int num : nums)` reads directly from the input.
+
+* **Time & Space Complexity:**
+    * **Time:** **O(n)**: one pass, constant work per element (a compare, a possible swap, two multiplies, two maxes/mins).
+    * **Space:** **O(1)**: three ints (`currentMax`, `currentMin`, `maxResult`).
