@@ -87,7 +87,7 @@ If `dp[i]` only reads `dp[i-1]` and `dp[i-2]`, you never need the whole array: k
 
 ### Pattern 4: Each Item Once → 0/1 knapsack, sums iterated downward
 * *Use for:* Partition Equal Subset Sum.
-* *Discipline:* odd total → false immediately. Iterate sums high → low, or each item gets used repeatedly.
+* *Discipline:* odd total → false immediately. State `(i, remaining)`; the answer is `dp[0][target]`, and an early return on the `target` column is valid. One row in place: iterate sums **high → low** so `row[left − x]` is still the previous item's value (low → high reuses the item = unbounded, Coin Change). With **two** rows, every cell must be written each row: don't start at `x` after a `swap`.
 
 ### Pattern 5: Best Run Ending Here → answer is the max over all `i`
 * *Use for:* Maximum Product Subarray (track max **and** min), Longest Increasing Subsequence (the O(n²) `dp[i]` = LIS ending at `i` form).
@@ -647,3 +647,73 @@ If `dp[i]` only reads `dp[i-1]` and `dp[i-2]`, you never need the whole array: k
 * **Time & Space Complexity (final, `5731aa9`):**
     * **Time:** **O(n log n)**: n elements, one O(log L) binary search each (L ≤ n is the LIS length). Measured at n = 100,000: 0.68 ms on the scan's worst case (409 ms with the linear scan), close to `std::lower_bound`'s 0.58 ms.
     * **Space:** **O(n)**: the record, reserved once. That's down from ~25 MB for the n × n table at n = 2500.
+
+### [12] Partition Equal Subset Sum
+
+> Brute force `28cb7a4` (TLE), memo `899f1a8`, 2-D table `809a7ab`, flat table `4275dbc`, two rows `32b8886`, then `1568e38`: one row updated in place, looping sums **downward**. The walls were: a memo table passed by value (so it never remembered anything), a table loop that dropped the skip branch, a flat stride copied from LIS, and two buffers combined with a loop that doesn't write every cell.
+
+* **The Core Pattern:** each item once, 0/1 knapsack (§2 Pattern 4), which is take or skip (Pattern 2) with a **sum** as the second state instead of LIS's `prev`.
+    * **Reduce first.** Two equal halves means `total = 2 × half`, so **an odd total is false immediately**. Otherwise you only need **one** subset summing to `target = total / 2`; everything else automatically makes the other half. It's a **subset**, not a subarray: `[1, 5, 11, 5]` splits as `{1, 5, 5}` + `{11}`, and those positions aren't contiguous.
+    * **`f(i, remaining)` = "using only `nums[i..n)`, can I pick some elements that sum to exactly `remaining`?"** Answer: `f(0, target)`. Skip keeps `remaining`; take subtracts `nums[i]`. Both move to `i + 1`, because each element is used at most once (in Coin Change a coin could be reused, so the index didn't have to advance). The result is `bool`, so the two futures combine with `||` (which short-circuits on the first success) instead of `max`.
+    * **Base-case order:** `remaining == 0` → true **before** `remaining < 0 || i == n` → false. Hitting exactly 0 with the last element means `i == n` at the same moment, and success has to win.
+    * At LeetCode's limits (n ≤ 200, values ≤ 100), `target ≤ 10,000`, so the table is at most 201 × 10,001 ≈ 2 MB of bytes. It's pseudo-polynomial: the cost grows with the *values*, not only with n.
+
+* **Stumble 1: the memo table passed by value.** The memo had the right state, a correct `uint8_t` 255 sentinel (safe, unlike Word Break's `-1`: both sides of `!=` promote to `int` 255), and the right `target + 1` width. And it was **still TLE**, because the parameter was `std::vector<std::vector<uint8_t>> dp`, with no `&`.
+    * Every call got its **own copy** of the whole table. A callee wrote its answer into *its* copy, which was destroyed when it returned. The caller's table never got the write, so its other branch recomputed everything. The lookup could never hit across branches.
+    * So it was the full **exponential brute force plus a whole-table copy per call**, slower than the committed brute force. Measured on all-even inputs with an odd half (answer false, so every state is explored): **n = 22: 848 ms by value vs 0.002 ms by reference**. By value grew ×4 per +2 elements, which is 2ⁿ; at n = 200 it never finished, by reference it took 0.11 ms.
+    * **No warning, no crash, correct answers: it's just slow.** **If a memo is about as slow as the brute force, first check that every call shares the same table.** A real memo is a huge drop, not a small gain. Same rule as `const std::vector<int>& nums`: a by-value parameter is the callee's private copy.
+
+* **Stumble 2: the bottom-up table.**
+    * **(n + 1) rows, not n.** The loop reads row `i + 1`, so row `n` (the base case, "no elements left") must exist.
+    * **The base is a column, not a row:** `dp[i][0] = 1` for every `i` ("pick nothing → sum 0"). Every other cell of row `n` is 0, since with no elements left nothing else is reachable.
+    * **`return dp[0][0]` asked the wrong question:** "can I make 0 from everything?", which I had just set to true. So every even total returned true (smallest failing case: `[2]`). The real question is the top-level call, `f(0, target)` = **`dp[0][target]`**.
+    * **The inner loop started at `nums[i]`, which dropped the skip branch.** When `left < nums[i]`, take is illegal (it overshoots), but **skip is still legal**: `dp[i][left] = dp[i+1][left]`. Those cells were never visited, stayed 0 ("impossible"), and the wrong 0 spread upward. On `[2, 3, 2, 1]` (target 4, want true via {3,1} or {2,2}), row 2 never learned "skip the 2, use the 1 → sum 1", so row 1 couldn't see that 3 + 1 = 4. 1,295 fuzz mismatches. **The LIS rule again: skip is always legal, take only when it fits.** In a 2-D table the inner loop covers every `left` from 1 to `target`.
+
+* **Insight: where the answer lives, and which early return is valid.**
+    * Each cell answers **its own** question: `dp[i][left]` = "can a subset of `nums[i..n)` make `left`?". Most true cells are about other sums. The very first cell filled in the trace above, `dp[3][1] = 1`, only says "the last element alone makes 1", and every `dp[i][0]` is true. **"Return on the first true cell" would return true for everything.**
+    * **The `target` column is different.** If `dp[i][target]` is true for *any* `i`, some subset of `nums[i..n)` sums to `target`, and a subset of a suffix is still a subset of the whole array. In the table it shows as the skip branch passing that true straight up to row 0. So: **return true as soon as `dp[i][target]` is true, return false after the loops.** Row 0 is the last row checked, so finishing the loops means `dp[0][target]` was false.
+    * **Check it after the row, not inside the inner loop.** `target` is the last column. Checking on every `left` reads a cell this row hasn't written yet, which is wasted work (and a stale read once there are two buffers). It only saves time when the answer is true; a false answer still fills every row.
+
+* **Stumble 3: the flat table used LIS's stride.** I indexed `i * (n + 1) + left` on a table allocated `(n + 1) × (target + 1)`. **The 2-D → 1-D formula is `rowIdx * rowWidth + colIdx`, where `rowWidth` is the number of columns.** In LIS the columns were `prev` values, so the width was `n + 1`. **Here the columns are sums, so the width is `target + 1`.** ASan on `[1, 1]` (n = 2, target = 1, 6 cells): the base-case loop wrote `dp[6]`, a **heap-buffer-overflow** on the first loop. `[1, 2, 5]` (answer false) didn't crash but returned **true**: with stride 4 on a 5-wide table, row 1 starts at row 0's last cell, so the rows overlap and skip/take read the wrong rows. **Take the width from what the columns mean, and name it once (`const int W = target + 1`)**, so the stride can't drift from the allocation. This is the second time (after LIS), so it's a habit to fix, not a one-off.
+
+* **Flattening helped here (~1.5×), unlike LIS.** Measured at `-O2` on a false input (200 random even values, target 5203): 2-D with the check inside the loop 0.66 ms, check moved outside 0.62 ms, **flat 0.40 ms**. In LIS it bought nothing. The likely reason (I didn't read the assembly): `uint8_t` is a character type, and C++ lets a character-type store alias *any* object, including the `vector<vector>`'s internal row pointers. So after every byte store the compiler has to reload `dp[i]` and `dp[i+1]`. LIS stored `int`, which can't alias a pointer, so the row pointers stayed in registers. A constant factor, and an interesting one.
+    * **Table vs memo isn't one-sided.** The table fills **every** sum `1 … target` in every row, reachable or not. On an input of mostly 100s (true, target 9999) only a few sums are reachable, and the memo (0.09 ms) beat every table (flat 0.90 ms). On diverse values the table wins (memo 1.41 ms).
+
+* **Two rows (`32b8886`): O(T) space, same speed.** Row `i` reads only row `i + 1`, so `current` (row `i`) and `next` (row `i + 1`) of `target + 1` bytes are enough: ~20 KB instead of 2 MB. Speed is unchanged (0.388 ms vs 0.385 flat), because it's the same n × T cells of work. Copying 5 KB per row is negligible next to the 5K-cell loop, and `std::swap` measured the same (0.380 ms).
+
+* **Stumble 4: `swap` + starting the loop at `nums[i]` is wrong, even though each one alone is fine.** 771 fuzz mismatches, smallest `[2, 3, 2, 1]` → false. (The review had said swap was safe "because every cell gets rewritten each row". Starting at `nums[i]` removes exactly that condition.)
+    * **The picture: two whiteboards.** `next` holds row `i + 1`. You write row `i` on `current`. **What's already on `current` before you start writing?** You only write cells `≥ nums[i]`, so the cells below keep **whatever was on that board**. They should hold the skip value, `next[left]` (row `i + 1`).
+        * **After `next = current` (copy):** both boards hold row `i + 1`, so the leftover cells already equal the skip value. Correct, by accident.
+        * **After `std::swap(next, current)`:** swap only exchanges the labels; nothing is erased or copied. `current` is now the board you wrote **two rows ago**: row `i + 2`. Row `i + 2` doesn't know about `nums[i + 1]`, so the leftover cells are missing every sum that needs that element.
+    * **The trace** (target 4, cells 0..4, rows from i = 3 down):
+
+      | i (value) | `current` after the row | what happened |
+      |---|---|---|
+      | 3 (1) | `1 1 0 0 0` | sum 1 reachable. Swap: `current` is now the old base row `1 0 0 0 0` |
+      | 2 (2) | `1 0 1 1 0` | loop starts at 2, so **cell 1 isn't written** and keeps the base row's **0**. It should be 1 (skip this 2, use the 1) |
+      | 1 (3) | cell 4 = `next[4] \|\| next[1]` = 0 \|\| **0** = 0 | {3, 1} lost through the bad cell 1 |
+      | 0 (2) | target never true | **false** ✗ |
+
+    * **The rule: with two buffers, every cell of the new row has to be written *by this row*** (by taking, or by copying the skip value). Skipping the low cells is safe only with **one** buffer, because then the cells you don't touch *are* the previous row's values.
+
+* **The final version: one row, in place, sums looping DOWNWARD.** `row[left] = row[left] || row[left − x]` for `left` from `target` down to `x = nums[i]`. Base `row[0] = 1`.
+    * **Why the untouched cells are correct:** with one row, a cell you don't write still holds row `i + 1`'s value, which is exactly the skip value. So the loop can stop at `x`, and the skip branch costs nothing.
+    * **Why the direction matters:** in place, each cell holds row `i + 1`'s value until you overwrite it, and row `i`'s value afterwards. The take read `row[left − x]` must still be **row `i + 1`'s** value, i.e. a subset that does *not* already use `nums[i]`.
+        * **Upward**, you reach the smaller index `left − x` *first*, so by the time you read it, it already holds row `i`'s value, which may include `nums[i]`. Then you use the same element **twice**.
+        * **Downward**, you only overwrite *larger* indices first. `left − x < left` hasn't been touched yet in this pass, so it's still row `i + 1`'s value.
+    * **Smallest trace: one element `x = 2`, target 4**, row before = `1 0 0 0 0` (only sum 0 reachable):
+
+      | direction | step by step | result |
+      |---|---|---|
+      | **upward** | left 2: `row[0]` = 1 → row[2] = 1 · left 3: row[1] = 0 → 0 · left 4: **`row[2]` = 1 (just set by this same 2)** → row[4] = 1 | `1 0 1 0 1`: claims 2 + 2 = 4 from a **single** 2 ✗ |
+      | **downward** | left 4: `row[2]` still 0 → 0 · left 3: row[1] = 0 → 0 · left 2: `row[0]` = 1 → row[2] = 1 | `1 0 1 0 0` ✓ |
+
+      Fuzzed: upward gave 17,651 mismatches out of 200k, e.g. `[1, 2, 5]` → true (want false; upward lets the 1 count twice and so on). Downward: 0.
+    * **Upward isn't "wrong" in general: it's the *unbounded* version.** Reusing the item you just placed is exactly what Coin Change wants (a coin can be used again), which is why its loop runs upward. **Direction = how many times each item may be used: downward for once (0/1), upward for unlimited.**
+    * Measured: **0.385 → 0.183 ms** on the diverse false input (2.1×): fewer cells (the loop stops at `x`), one buffer, and no copy-then-take step. 0.18 ms on the true input thanks to the early return.
+
+* **Not taken: the bitset.** The row is just a set of reachable sums, and "every reachable `s` makes `s + x` reachable" for all `s` at once is `reachable |= reachable << x`. A `std::bitset<10001>` (sized by the constraints) does 64 sums per machine word, **O(n · T / 64)**: measured **0.025 ms**, 7× over the row and 16× over the flat table. It's the systems follow-up worth mentioning *after* the DP. Also skipped: the early exits "an element > target → false, == target → true" (one cheap check, constant factor).
+
+* **Time & Space Complexity (final, `1568e38`):**
+    * **Time:** **O(n · T)** with T = total / 2 ≤ 10,000: every element sweeps the sums from `T` down to itself, with an early return once `T` is reachable.
+    * **Space:** **O(T)**: one row of `T + 1` bytes (~10 KB at the limits), down from ~2 MB for the full table.
