@@ -78,8 +78,8 @@ If `dp[i]` only reads `dp[i-1]` and `dp[i-2]`, you never need the whole array: k
 * *Discipline:* write the base cases first. Decode Ways: a `'0'` can only be the second digit of `10` or `20`.
 
 ### Pattern 2: Take or Skip → `max(skip, take + value)`
-* *Use for:* House Robber, House Robber II (circle = two linear runs: drop the first house, or drop the last).
-* *Discipline:* House Robber II with one house has to return that house, because both runs would be empty.
+* *Use for:* House Robber, House Robber II (circle = two linear runs: drop the first house, or drop the last), Longest Increasing Subsequence with state `(i, prev)`.
+* *Discipline:* House Robber II with one house has to return that house, because both runs would be empty. Skip is always legal, so compute it unconditionally; take only when legal, then `max`. Taking whenever you *can* is greedy (LIS `[1,5,2,3]`).
 
 ### Pattern 3: Make a Target from Pieces → `dp[target]` over every piece
 * *Use for:* Coin Change, Word Break.
@@ -90,17 +90,22 @@ If `dp[i]` only reads `dp[i-1]` and `dp[i-2]`, you never need the whole array: k
 * *Discipline:* odd total → false immediately. Iterate sums high → low, or each item gets used repeatedly.
 
 ### Pattern 5: Best Run Ending Here → answer is the max over all `i`
-* *Use for:* Maximum Product Subarray (track max **and** min), Longest Increasing Subsequence.
+* *Use for:* Maximum Product Subarray (track max **and** min), Longest Increasing Subsequence (the O(n²) `dp[i]` = LIS ending at `i` form).
 * *Discipline:* the answer is not `dp[n-1]` when a run can end anywhere.
 
 ### Pattern 6: Palindromes → expand around 2n − 1 centres
 * *Use for:* Longest Palindromic Substring, Palindromic Substrings.
 * *Discipline:* odd and even centres both. Store the best `(start, length)`, not substrings, and build the string once at the end.
 
+### Pattern 7: Smallest Ending per Length → sorted record + `lower_bound`
+* *Use for:* Longest Increasing Subsequence in O(n log n).
+* *Discipline:* `tails[k]` = the smallest ending of any increasing subsequence of length k+1. Overwrite the **first element ≥ x** (not the largest), or append. First ≥ for strictly increasing, first > for non-decreasing. `tails` holds the right length, not the actual subsequence.
+
 ### The Non-Negotiable Discipline
 * **Say what `dp[i]` means in one sentence before writing code.**
 * **Look at the last decision** to get the recurrence.
 * **Base cases first, then loop order:** every state you read must already be filled.
+* **A table fills every state.** Each recursion parameter becomes a loop; a variable carried across iterations means you're walking one path.
 * **Top-down to discover, bottom-up to submit,** then roll the array if only the last one or two states are read.
 * **Check the answer's location:** `dp[n]`, `dp[n-1]`, or the max over all.
 
@@ -545,3 +550,98 @@ If `dp[i]` only reads `dp[i-1]` and `dp[i-2]`, you never need the whole array: k
 * **Time & Space Complexity (final, hash set):**
     * **Time:** **O(m · L + n · L²)**: building the set hashes every word once. Then n indices × up to L lengths × an O(L) hash per lookup. The m factor is out of the main loop.
     * **Space:** **O(n + m)**: the `n + 1` byte table plus the set of views (the views don't copy the characters).
+
+### [11] Longest Increasing Subsequence
+
+> Brute force `c91f220` (take/skip recursion, O(2ⁿ)), memo `c1c09e0` (flat n × n table), table `5895e63` (2-D) → `1d691b7` (only real states) → `7ea02e4` (flat), then `5731aa9`: the O(n log n) "smallest ending per length" record with my own binary search. The walls were: what `prev` means, "take whenever you can" being greedy, counting the states of a range that starts at −1, a table loop that walked one path instead of filling every cell, and a binary search whose branches pointed the wrong way.
+
+* **The Core Pattern (the DP versions):** take or skip (§2 Pattern 2), but with a **two-part state**. **`f(i, prev)` = "the longest increasing subsequence I can still build from `nums[i..n)`, given that the last element I actually picked is `nums[prev]`"** (`prev = −1` means nothing picked yet). Base case: `i == n` → 0. Answer: `f(0, −1)`. One top-level call covers every starting index, because the skip branch lets the subsequence begin anywhere. My first plan had an outer loop over start indices, which just redid the same work.
+
+* **Stumble 1: the first recursion mixed two styles and broke both.**
+    * It looped `i` from `startIdx` ("which element comes next?") **and** had a take/skip `if/else`. In the loop style the loop itself is the skip, so the `else` has no job.
+    * **`count = …` inside the loop overwrote instead of keeping the best**, so the function returned whatever the *last* iteration produced. The last iteration is always `i = n − 1`, whose call returns 0, so **every input returned 1**, `[1,2,3]` included. Each loop iteration is a different choice; you want the `max` of them.
+    * **The `else` moved `prev` to an element it never counted.** On `[3,4,1,2]` (answer 2) it took 3, 4, then made 1 the new `prev` without counting it, then took 2 because 2 > 1, and claimed "3, 4, 2" = 3. **`prev` must always be the last element actually in the subsequence.** If `nums[i]` can't be taken, it's simply not part of this path, and `prev` stays.
+    * "Should I erase the previous element and use the current one instead?" No. Another branch of the recursion already covers that: the one that never picked the old `prev`. Recursion explores every choice for you. A path never undoes its own choices.
+
+* **Stumble 2: "take whenever you can" is greedy.** The second version took `nums[i]` every time it was legal and only skipped when it had to. `[1,5,2,3]` returned 2 (want 3, `1,2,3`): taking 5 was *legal* but bad, because it blocked both 2 and 3. At index 1 you can't know whether 5 pays off. That depends on elements you haven't seen. So when taking is legal there are **two** futures, take (`1 + f(i+1, i)`) and skip (`f(i+1, prev)`), and you keep the max. **Rule to remember: skipping is always allowed. Taking is allowed only if `nums[i] > nums[prev]`.** So compute skip unconditionally, then `max` in take if it's legal. No `if/else` needed.
+
+* **Why the brute force is exponential:** every legal element splits into two calls. On a sorted array every element is always legal, so it's a full binary tree: measured 1.1 ms at n = 20, 19 ms at n = 24, **316 ms at n = 28**, ×16 per +4 elements, which is 2ⁿ. LeetCode goes to n = 2500.
+
+* **Stumble 3: counting the memo states (an off-by-one in a range that starts at −1).**
+    * The result depends only on `(i, prev)`. `i` is stored for `0 … n−1` (n values; `i == n` returns before touching the table). `prev` goes from `−1 … n−2`.
+    * I counted `prev` as **n − 1** values and sized the flat table `n * (n − 1)`. Wrong: **an inclusive range `a … b` has `b − a + 1` values**, so `−1 … n−2` has `(n−2) − (−1) + 1 = n`. The top end moved down by one, but so did the bottom end (−1 instead of 0), so the count doesn't change. With n = 3, `prev` is `−1, 0, 1`: three values.
+    * **The `+1` shift only relabels.** `prev + 1` maps `−1 … n−2` onto columns `0 … n−1`: same n states, now valid array indices. It never changes how many there are.
+    * What the wrong size did: the largest index is `(n−1)·n + (n−1) = n² − 1`, but the table had `n² − n` slots, so the last row wrote out of bounds. At **n = 1 the table had size 0**, so even the first lookup was out of bounds. **The stride must equal the column count**: the table is n × n, the index is `i * n + (prev + 1)`, and `−1` works as "not computed" because every answer is ≥ 0.
+    * The memo is O(n²) time: 18 ms at n = 2500, with a recursion depth of n + 1.
+
+* **Stumble 4: the bottom-up table was a walk along one path, not a fill of every state.**
+    * Right to left was correct: `f(i, …)` only reads `f(i+1, …)`, so row `i+1` must be done before row `i`.
+    * **The mental-model bug:** my first table loop carried a single `prevIdx` variable and updated it ("I took this one, so it's the new prev"). That's walking one subsequence, the greedy version again in disguise. In the recursion, `prev` was a **parameter**: thousands of calls, each with its own `prev`. The table has to hold the answer **for every `(i, prev)` pair**. So: **outer loop over `i` (n−1 down to 0), inner loop over every `prev`, and the body is the recursive body with each call replaced by a read from row `i+1`.** No variable carries between iterations. **The table is the only state.**
+    * Filled by hand for `[2, 5, 3]` (answer 2), rows = `i`, columns = `prev`:
+
+      | i (value) | prev = −1 | prev = 0 (2) | prev = 1 (5) | prev = 2 (3) |
+      |---|---|---|---|---|
+      | **3** (base) | 0 | 0 | 0 | 0 |
+      | **2** (3) | skip 0, take 1 → **1** | 3 > 2 → **1** | 3 > 5 ✗ → **0** | |
+      | **1** (5) | skip 1, take 1 + 0 → **1** | 5 > 2 → **1** | | |
+      | **0** (2) | skip 1, take 1 + row 1[prev 0] = 2 → **2** ✓ | | | |
+
+      Each cell reads the cell straight below it (skip) and the cell in column `i` of the row below (take).
+    * **The base case is a whole row, not one cell.** `f(n, prev) = 0` for *every* `prev`. The memo never stored row `n` (it returned early), but the table reads it. And at `i = n−1`, take reads `(n, prev = n−1)`, which is column `n`. So the table is **(n+1) × (n+1)**, all zeros, and the base row comes for free.
+    * **The index bugs on the second try:** `i++` instead of `i--`; stride `n` on an `n+1`-wide table (so rows bled into each other); a `−1` init plus one `dp[n*n − 1] = 0`; and the loop condition `(prevIdx + 1) < i`. That last one meant `prevIdx < i − 1`, which skipped the last legal `prev` in every row, and **at `i = 0` the loop never ran at all**, so `dp[0]` stayed −1 and every input returned −1. **The `+1` shift belongs only inside the `[]`, never in the loop logic.**
+    * **Why take reads column `i + 1`, not `i`:** after taking `nums[i]`, the new `prev` is `i`, and `prev = i` lives in **column `i + 1`**. `dp[i+1][i]` would answer "last picked was `nums[i−1]`", a different question.
+    * **What unlocked it:** separating the logic from the index arithmetic. I switched to a real `vector<vector<int>>` (`dp[i][prev + 1]`, no stride to get wrong), got it passing, then flattened it back as a mechanical step.
+
+* **Only real states: `prev < i` (`1d691b7`).** `prev` is an element already picked, and picking goes left to right, so **`prev < i` always**. A cell like `(i = 1, prev = 2)` means "I already picked index 2, now I'm deciding index 1", which never happens. No call `f(1, 2)` ever ran. And a real cell only ever reads real cells (skip: same `prev` one row down; take: `prev = i` in row `i+1`), so the fake cells are computed and never used. Ending the inner loop at `prev < i` cuts the work from n² to about n²/2: **5.20 → 2.35 ms** at n = 2500.
+
+* **Flattening didn't help (`7ea02e4`): 2.35 → 2.72 ms, within noise.** The inner loop walks along one row, and inside a row a `vector<vector>` is already contiguous: the compiler loads the row pointer once and then strides through it exactly like the flat version. Flattening pays off when you jump between rows a lot or allocate many small rows. Neither happens here.
+
+* **What the review found on the table:** correct, but **O(n²) memory: (n+1)² ints ≈ 25 MB at n = 2500** (peak RSS 27.1 MB vs 2.6 MB without it), all zero-initialized, and only row `i+1` is ever read. Two rolling rows would be ~20 KB and measured 2.56 → 1.59 ms. Also, `(n+1) * (n+1)` in `int` wraps negative at n = 46,341 (LeetCode caps n at 2500, but the size belongs in `size_t`). The O(n²) "`dp[i]` = the LIS **ending** at `i`" form (§2 Pattern 5) is the DP version most interviewers expect, also O(n) space. **The real gap was algorithmic: LeetCode's follow-up asks for O(n log n), and at Senior level an O(n²) answer gets that follow-up.**
+
+* **The heap detour: a data structure with no meaning.** Before the n log n version I tried a max-heap: if `x ≤ top`, pop the top, then push `x`, and return the size. It "worked surprisingly well" until duplicates appeared, so I added a dedupe pass, and it got *worse*. Fuzzed: 29,368 mismatches out of 200k without the dedupe, 42,274 with it.
+    * `[1,5,1,3]` → 3 (want 2): popping 5 for 1 gives `{1, 1}`, which claims "a length-2 subsequence ending at 1". None exists, since 1 isn't greater than the 1 below it. From then on the size counts a subsequence that isn't real. The duplicates were a **symptom** of that broken meaning, and deleting them threw away length I'd legitimately earned (`[1,4,1]` → 1).
+    * **The rule this taught: before writing the loop, say in one sentence what the data structure holds after each step, and check it on a 4-element trace.** The memo had that sentence. The heap didn't.
+
+* **The insight (the O(n log n) record): keep the smallest ending for each length.**
+    * **`tails[k]` = the smallest value that any increasing subsequence of length k+1 seen so far ends with.** A smaller ending is better because a future `y` can extend a subsequence only if `y > ending`, so a lower ending accepts more futures (a later 3 extends `1, 2` but not `1, 3`).
+    * My rule in my own words: *add `x` if it's greater than the largest element; otherwise replace.* That first half does look like a max-heap. **The second half is where the heap breaks: "replace" has to say *which* element, and it's the smallest element ≥ `x`, not the largest.**
+    * **Why exactly that slot**, asked slot by slot with `tails = [1, 3, 5]` and `x = 2`:
+        * Length 1 (record 1): 2 > 1, so 2 would be a worse ending. Leave it. Every slot whose value is < `x` is already better than `x`.
+        * Length 2 (record 3): `x` needs a length-1 ending below 2, and 1 qualifies, so `1, 2` exists and ends lower than 3. **Improve it: overwrite.** This is the first slot ≥ `x`. The slot to its left is < `x`, so `x` can extend that subsequence by exactly one.
+        * Length 3 (record 5): `x` would need a length-2 ending below 2, but the best is 3. Impossible, and the same for every slot beyond.
+        * No slot ≥ `x` means `x` extends the longest subsequence: append. Same rule, applied past the end.
+    * **The heap and the record side by side on `[1, 3, 5, 2, 4]`** (true LIS 3):
+
+      | x | max-heap (replace the largest) | `tails` (replace the first ≥ x) |
+      |---|---|---|
+      | 1, 3, 5 | {1, 3, 5} | [1, 3, 5] |
+      | 2 | pop 5 → {1, 2, 3} | 3 is the first ≥ 2 → [1, **2**, 5] |
+      | 4 | 4 > 3, push → **size 4** ✗ | 5 is the first ≥ 4 → [1, 2, **4**], **size 3** ✓ |
+
+      Replacing the largest is only right when `x` is greater than everything else in the record, and a heap can't check that, because it only shows the top. It also can't *search* by value. **A sorted vector plus binary search can**, and `tails` stays strictly increasing by itself: you only append a new maximum or overwrite a slot with a value that still fits between its neighbours.
+    * **`tails` is not the actual LIS.** `[3, 4, 1]` ends with `tails = [1, 4]`: the 1 comes *after* the 4 in the array. The length is right; the contents mix different subsequences.
+    * **First ≥ (`lower_bound`), not first > (`upper_bound`).** With first-greater, an equal value would land in the next slot and grow the length, which computes the longest *non-decreasing* subsequence.
+
+* **Stumble 5: the record with a linear scan was still O(n²).** My first version found the slot by walking from index 0. Correct (200k fuzz clean), but O(n · L). It looked fast on random input because random arrays have a short LIS (~90 at n = 2500). The worst case is easy to build: first half `0, 2, 4, …` (a long record), then a value that keeps landing near the end. **n = 100,000: 409 ms for the scan, 0.52 ms for `lower_bound`.**
+
+* **Stumble 6: my own binary search, and why `left` lands exactly on the first element ≥ target.** I adapted the Koko Eating Bananas search (folder 07) and got the branch backwards: `subset[mid] <= target → right = mid − 1`. On `[1, 3, 5]` every answer was wrong (target 0 → 3, target 6 → 0). `subset[mid] <= target` mostly means mid is **too small**, which is exactly when you should go *right*. Koko's shape is "if mid *works*, look left; otherwise go right". Here "works" means `subset[mid] >= target`, so the fixed branches are: **`>= target` → `right = mid − 1`, else `left = mid + 1`, return `left`.** Even with the fix I couldn't see *why* `left` converges to the answer, so here's the model:
+    * **Turn the array into a row of NO / YES** by asking "is this element ≥ target?". Target 4 on `[1, 3, 5, 7, 9]` gives `NO NO YES YES YES`. Because the array is sorted, it's **always some NOs followed by some YESes**: a NO never comes after a YES. The answer is **the first YES**, the boundary between the two groups.
+    * **What the two walls mean:** everything **before `left`** is known to be NO. Everything **after `right`** is known to be YES. `[left, right]` is still unchecked.
+    * **Each step checks `mid` and grows one zone.** mid is NO → mid and everything before it are NO (sorted) → `left = mid + 1`. mid is YES → mid and everything after it are YES → `right = mid − 1`. Mid isn't lost: it's now inside the YES zone. The unchecked window shrinks every step, and the zones never overlap.
+    * **The trace** (target 4, `?` = unchecked):
+
+      | step | left | right | mid | ≥ 4? | after the move (indices 0 1 2 3 4) |
+      |---|---|---|---|---|---|
+      | start | 0 | 4 | | | `? ? ? ? ?` |
+      | 1 | 0 | 4 | 2 | 5 → YES → right = 1 | `? ? Y Y Y` |
+      | 2 | 0 | 1 | 0 | 1 → NO → left = 1 | `N ? Y Y Y` |
+      | 3 | 1 | 1 | 1 | 3 → NO → left = 2 | `N N Y Y Y` |
+      | end | **2** | 1 | | window empty | |
+
+      When the loop stops, nothing is unchecked: the row is split into `N N | Y Y Y`. **`right` is the last NO and `left` is the first YES.** That's the whole argument: `left` always sits just after everything known to be NO, so when nothing is unknown anymore, `left` is the first YES. The loop never checks whether `left` "is the answer". It only sorts elements into NO and YES, and `left` ends up on the boundary.
+    * **The edge cases fall out of the same picture.** Target larger than everything: the row is all NO, `left` walks to `n = size()`, so "just after all the NOs" is past the end → append. Empty record: `right = −1`, the loop never runs, `left = 0 = size()` → append. So the `push_back(nums[0])` special case wasn't needed, and the caller only has to compare the returned index against `size()`.
+    * Tested against `std::lower_bound` on 200k random sorted arrays: 0 mismatches. `std::lower_bound` is the one-line version; writing it by hand is what interviews sometimes ask for.
+
+* **Time & Space Complexity (final, `5731aa9`):**
+    * **Time:** **O(n log n)**: n elements, one O(log L) binary search each (L ≤ n is the LIS length). Measured at n = 100,000: 0.68 ms on the scan's worst case (409 ms with the linear scan), close to `std::lower_bound`'s 0.58 ms.
+    * **Space:** **O(n)**: the record, reserved once. That's down from ~25 MB for the n × n table at n = 2500.
