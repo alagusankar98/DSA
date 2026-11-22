@@ -506,7 +506,7 @@ If `dp[i]` only reads `dp[i-1]` and `dp[i-2]`, you never need the whole array: k
 
 ### [10] Word Break
 
-> Brute force `4298185` (TLE), memo `2f5cfdf` → `84de7ef` (cache only failures), table `5ca9fa5` (suffix table filled by *pushing* from word ends), then a hash set of `string_view`s looped over lengths instead of words. The walls were: a `char` sentinel that only works on x86, a cache whose meaning is *not* the return value, and a line-by-line bottom-up translation that dropped the one line that mattered: the recursive call.
+> Brute force `4298185` (TLE), memo `2f5cfdf` → `84de7ef` (cache only failures), table `5ca9fa5` (suffix table filled by *pushing* from word ends), then `900206a`: a hash set of `string_view`s looped over lengths instead of words. The walls were: a `char` sentinel that only works on x86, a cache whose meaning is *not* the return value, and a line-by-line bottom-up translation that dropped the one line that mattered: the recursive call.
 
 * **The Core Pattern:** make a target from pieces (§1 "The Families", §2 Pattern 3). **`dp[i]` = "the suffix `s[i..n)` can be split into dictionary words."** Base case: `dp[n]` = true (the empty suffix splits trivially). The answer is `dp[0]`. A word can be used at `i` only if it matches there **and** what's left after it is splittable. Either half on its own proves nothing.
 
