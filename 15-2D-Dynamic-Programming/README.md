@@ -81,6 +81,7 @@ If row `i` only reads row `i − 1`, keep two rows, or one row updated in place.
 ### Pattern 1: Grid Paths → `dp[r][c]` from the cells you can arrive from
 Each cell combines the neighbours that can step into it (usually up and left).
 * *Discipline:* the first row and first column are base cases (only one way to reach them). Rolls to one row: `row[c]` is "up" before you write it, `row[c − 1]` is "left" after.
+* *Use for:* Unique Paths (one row: left-to-right, because "left" must already be this row's value).
 
 ### Pattern 2: Two Sequences → `dp[i][j]` over prefixes, with an empty row and column
 Decide on the **last characters** `a[i − 1]`, `b[j − 1]`: match (diagonal), or drop one from either side (up / left).
@@ -114,3 +115,76 @@ Pick the element (or split point) handled **last** inside `[l, r]`. Its cost the
 ---
 
 ## 3. Problem Strategies & Patterns
+
+### [1] Unique Paths
+
+> BFS brute force `ec35efe` (correct, exponential), memo `3d3ccb6`, 2-D table `d92a0b7`, then one row updated in place (with a right-to-left mirror kept as a comment). The walls: thinking "no cycles" meant "no duplicate work", a padded table seeded on both sides (every answer exactly doubled), an unpadded table that kept the padding's seed, and which way the one-row loop is allowed to run.
+
+* **The Core Pattern:** grid paths (§2 Pattern 1). Moves are only right or down, so `r + c` goes up by 1 every step: the grid is a **DAG**, every path has exactly `(m − 1) + (n − 1)` steps, and every walk ends.
+    * **`dp[r][c]` = the number of ways to get from the start to `(r, c)`.** You can only arrive from above or from the left, so `dp[r][c] = dp[r−1][c] + dp[r][c−1]`.
+    * **Base cases are the whole top row and the whole left column, not just the start.** A cell on the top edge can only be reached by going straight right; on the left edge, only straight down. One way each: all 1s.
+    * The mirror meaning works too: `dp[r][c]` = ways from `(r, c)` **to the target**, reading below and right, filled bottom-up. That's what the memo computed: `f(m, n)` = paths through an `m × n` grid = `f(m−1, n) + f(m, n−1)`, base `m == 1 || n == 1 → 1`. Both are correct because a path reversed is still a path. **Pick the meaning first; the fill direction follows from it.**
+
+* **Stumble 1: "there are no cycles, so I don't need a seen set" is true, and it's not why BFS blew up.** In a normal BFS, a `seen` set does two jobs: (1) it stops cycles, and (2) it stops the same cell being queued again by a *different* path. Here job 1 is unnecessary, but job 2 is where all the cost went. With no merging, a queue entry is a **path prefix**, not a cell. On 3×3:
+
+  | level (r+c) | entries pushed | distinct cells |
+  |---|---|---|
+  | 0 | (0,0) | 1 |
+  | 1 | (0,1), (1,0) | 2 |
+  | 2 | (0,2), **(1,1), (1,1)**, (2,0) | 3 |
+  | 3 | (1,2) ×3, (2,1) ×3 | 2 |
+  | 4 | (2,2) ×6 | 1 |
+
+    * (1,1) comes in twice, from (0,1) going down and from (1,0) going right: two paths, not a cycle. Each copy then explores the identical subtree below it. The final `count++` at the target is correct only because every path is walked out in full, one unit of work per path: about C(m + n, m) pushes in total. **Exponential.**
+    * The vector-as-queue never popped (a `read` index instead), so every entry ever pushed stayed in memory: **~430 MB at 14 × 14**, at 0.27 s. And `reserve(m * n)` assumed one push per cell, which is exactly the wrong model. It would run out of memory before running out of time.
+    * **A plain `seen` set would make it *wrong*:** skip the second (1,1) and you lose a path; 3×3 would return 1, not 6. **The fix is a seen set that carries a count:** when a cell arrives again, don't push it, add to `ways[cell]`. That *is* the DP. The duplicate rows in the table above are exactly what memoization deletes.
+
+* **Stumble 2: the padded table returned exactly 2× the answer, on every size.** The table was `(m+1) × (n+1)`, the seeding loops ran from index 0, and the main loop started at `(1, 1)`.
+    * The seeding wrote 1s into the **padding**: `dp[1][0]` (from the row loop at `i = 0`) and `dp[0][1]` (from the column loop at `i = 0`). Then the main loop recomputed the start cell instead of keeping it: `dp[1][1] = dp[0][1] + dp[1][0] = 1 + 1 = 2`. Everything downstream is built from that 2:
+
+      ```
+           j=0 j=1 j=2 j=3
+      i=0   0   1   0   0
+      i=1   1   2   2   2
+      i=2   0   2   4   6
+      i=3   0   2   6  12   ← want 6
+      ```
+
+    * Fuzzed: owner = 2 × reference on all 225 sizes up to 15 × 15. (A hidden third bug: the 1-indexed seeding stopped at `n − 1`, so `dp[1][n]` was never seeded; the overwrite hid it.)
+    * **Why exactly ONE padding seed.** The start cell gets its value from the same formula as every other cell: above + left. Both of those are fake padding cells. The right value at the start is 1 (one way to stand where you begin). So exactly one fake neighbour must feed it 1: seed `dp[0][1]` **or** `dp[1][0]`. Seed both and it's as if two walkers enter the grid, one from above and one from the left. Every other padding cell stays 0, since no path enters the grid from outside.
+
+* **Stumble 3: removing the padding but keeping the padding's seed.** Shrinking the table to `m × n` with `dp[0][1] = 1` and the loop still at `(1, 1)` returned **2 on 3 × 3**:
+
+  ```
+   0 1 0        want   1 1 1
+   0 1 1               1 2 3
+   0 1 2                1 3 6
+  ```
+
+    * Without padding, `dp[0][1]` isn't fake any more. **It's a real cell** (right of the start), and row 0 / column 0 are real cells the loop never fills, so they stay 0 except for the one stray 1. The early `if (m == 1 || n == 1) return 1` hid it for thin grids but didn't fix anything.
+    * **The two consistent setups, never mixed:** (A) `(m+1) × (n+1)`, one seed in the padding, loop over all real cells including the start; or (B) `m × n`, row 0 and column 0 all 1s, loop from `(1, 1)`. The committed table is B, and the early return went away because the seeding already handles 1 × n and m × 1.
+
+* **The final version: one row, in place.** Row `r` only reads row `r − 1`, so keep a row of `n` ones (the top edge) and for each of the `m − 1` remaining rows do `row[c] += row[c − 1]` for `c = 1 .. n−1`. `row[0]` stays 1 by itself, which is the left edge for free.
+    * **Why left-to-right.** At the moment `row[c] += row[c−1]` runs, the array is half old row, half new row. `row[c]` must still be the **old** row's value (that's "up"), and `row[c − 1]` must already be the **new** row's value (that's "left"). **Visit the neighbour you read before the cell that reads it.** Left to right visits `c − 1` first. ✓
+    * **Flipping only the loop direction is wrong.** Right to left with the same `row[c] += row[c−1]`: when `c` is updated, `c − 1` still holds the old row, so you compute up + **up-left**. 3 × 3 returns **4**:
+
+      | version | after row 1 | after row 2 | result |
+      |---|---|---|---|
+      | L→R, `row[c] += row[c−1]` | 1 2 3 | 1 3 6 | 6 ✓ |
+      | R→L, `row[c] += row[c−1]` | 1 2 2 | 1 3 4 | 4 ✗ |
+      | R→L, `row[c] += row[c+1]`, answer `row[0]` | 3 2 1 | 6 3 1 | 6 ✓ |
+
+    * **Right-to-left works when the meaning flips with it.** The commented version (`row[c−1] += row[c]` for `c` from `n − 1` down to 1, answer `row[0]`) is the third row of the table with the index shifted by one: a cell = paths from here **to the target**, reading the right neighbour, which right-to-left has already updated. Same rule. The outer loop is just a counter of m − 1 passes; with one row, no row index is ever used, so "top-down" vs "bottom-up" lives entirely in the inner loop.
+    * **Same rule as Partition `[12]` in the 1-D guide, seen from the other side:** there, downward was chosen so that `row[left − x]` would still be the *old* row (use each item once). Here, left-to-right is chosen so that `row[c − 1]` is already the *new* row (left is in the same row). In both cases the question is "old row or new row for the cell I'm reading?", and the loop direction answers it.
+
+* **Overflow argument (say it in the interview).** Counts only grow moving right or down, so every cell is ≤ the final answer. LeetCode guarantees the answer ≤ 2·10⁹ < `INT_MAX`, so no intermediate cell can overflow `int`. Without that guarantee, 100 × 100 is ~10⁵⁸ and no integer type holds it.
+
+* **Measured** at `-O2`, averaged over all valid inputs: 2-D `vector<vector>` 474 ns/call (m + 1 heap allocations), **one row 76 ns (6×)**, closed form 6 ns.
+
+* **Not taken (talking points):**
+    * **The closed form C(m+n−2, m−1).** A path is m − 1 downs and n − 1 rights in some order; choose where the downs go. O(min(m, n)) time, O(1) space. Use 64-bit and multiply before dividing at each step: after step `i` the running value is itself a binomial, so every division is exact. In a DP round the DP is the expected answer.
+    * **Keep the row along the shorter side** (swap m and n first, the answer is symmetric): O(min(m, n)) space. Constant factor here.
+
+* **Time & Space Complexity (final, one row):**
+    * **Time:** **O(m · n)**, one addition per cell.
+    * **Space:** **O(n)**, one heap allocation; 400 bytes at the limits, lives in L1.
