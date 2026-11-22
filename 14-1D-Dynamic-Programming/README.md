@@ -15,6 +15,31 @@ Backtracking (topic 11) explored a **tree of choices**: at each step, try every 
 * **Memoization (top-down):** write the natural recursion, then add a cache. Before computing state `i`, check the cache; after, store it.
 * **Tabulation (bottom-up):** no recursion. Fill `dp[]` with a loop from the base cases upward, so every state a formula needs is already filled.
 
+### The Problems
+- LIS: the recursion took three tries: the overwritten count, prev moving to an element you never picked, then greedy take. The model was the wall.
+- Partition, two hours later: you did the odd-total reduction yourself, and the take/skip recursion with (i, remaining) was right on the first try, base-case order included. The memo state and size were right too. Every bug after that was one of three things you'd met before: a missing &, the dropped skip branch, and the stride.
+
+That's the pattern from your progress log too. Coin Change's table was "a literal transliteration" once the recursion was right. The part that used to stall you, what a state means, is the part that's getting faster. What's left is mostly mechanical.
+
+Why the optimal table won't come first, and why that's fine. Almost nobody writes the rolled, in-place, downward-loop version directly. The usual path is the one you followed:
+
+recursion → memo → table → fewer rows
+
+Each step is a mechanical change to the previous one, once the state sentence is right. Interviewers expect that path. A correct memo with a clear state is a solid answer, and "now let me turn it into a table and drop to one row" is the follow-up. You don't have to skip steps; you have to get through them faster.
+
+Your recurring bugs are a short, fixed list. Check these each time you build a table:
+
+1. Skip is always legal. Every cell gets the skip value; take only when it fits.
+2. Width = what the columns mean. Name W once, and use the index row * W + col.
+3. Shifts like +1 go only inside [], never into loop bounds.
+4. Answer location: it's the top-level call's arguments, dp[0][target], not whatever looks convenient.
+5. Memo by reference. If it's as slow as the brute force, the table isn't shared.
+6. When rolling rows: every cell is written each row, or there's only one buffer, and the loop direction matches how many times an item can be used.
+
+These are the bugs that cost you rounds today. None of them is about understanding DP; they're about bookkeeping, and a checklist catches bookkeeping.
+
+What will make it click: 2-D DP is next, and the problems there have the same shape as LIS and Partition: a state with two parts, filled row by row. The re-solve pass in roadmap.md is where it moves from "I can get there with help" to "I write the table on the second try", because a third solve on a problem you've already struggled with is a different experience. Expect the first few 2-D problems to feel like today. If the recursion keeps coming out right first time, that's the sign it's working.
+
 ### The Four Questions (ask them before writing any code)
 1. **What does `dp[i]` mean, in one English sentence?** If you can't say it, you can't write the recurrence. Most of the difficulty of a DP problem is choosing this sentence.
 2. **How does `dp[i]` come from smaller states?** Look at the **last decision**: the last step taken, the last house robbed or skipped, the last coin used, the last word in the split.
