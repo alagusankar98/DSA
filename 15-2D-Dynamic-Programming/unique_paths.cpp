@@ -1,20 +1,21 @@
-int uniquePaths(int m, int n) {
-    static constexpr std::array<std::pair<int, int>, 2> directionArray = {{{0, 1}, {1, 0}}};
-    std::vector<std::pair<int, int>> bfs;
-    bfs.reserve(m * n);
-    bfs.emplace_back(0,0);
-
-    int count = 0;
-    int read = 0;
-    while(read < static_cast<int>(bfs.size())) {
-        auto [r, c] = bfs[read]; read++;
-        if(r == m - 1 && c == n - 1) count++;
-
-        for(const auto& [rowOffset, colOffset] : directionArray) {
-            if(int rowIdx = (r + rowOffset), colIdx = (c + colOffset); rowIdx < m && colIdx < n) {
-                bfs.emplace_back(rowIdx, colIdx);
-            }
-        }
-    }
-    return count;
+int dfs(int m, int n, std::vector<std::vector<int>>& dp) {
+    if(m == 1 || n == 1) return 1;
+    if (dp[m - 1][n - 1] != -1) return dp[m - 1][n - 1]; 
+    return dp[m - 1][n - 1] = dfs(m-1, n, dp) + dfs(m, n - 1, dp);
 }
+int uniquePaths(int m, int n) {
+    std::vector<std::vector<int>> dp(m, std::vector<int>(n, -1));
+    return dfs(m, n, dp);
+}
+
+
+// Without offset and extra state
+// int dfs(int m, int n, std::vector<std::vector<int>>& dp) {
+//     if(m == 1 || n == 1) return 1;
+//     if (dp[m][n] != -1) return dp[m][n]; 
+//     return dp[m][n] = dfs(m-1, n, dp) + dfs(m, n - 1, dp);
+// }
+// int uniquePaths(int m, int n) {
+//     std::vector<std::vector<int>> dp(m + 1, std::vector<int>(n + 1, -1));
+//     return dfs(m, n, dp);
+// }
