@@ -124,6 +124,7 @@ Partition's table, but cells hold counts (`+`) instead of `||`.
 ### Pattern 4: Position + Mode → a small state machine per step
 `dp[i][s]` = best value at step `i` in mode `s`. Write the allowed transitions first, as a table or a diagram, then the code.
 * *Discipline:* every mode gets a base value at step 0, including "impossible" ones (a sentinel that survives `+` and `−`). Usually rolls to one variable per mode, updated from the **previous** step's values (copy them first, or the order of updates leaks today's values into today).
+* *Use for:* Best Time to Buy and Sell Stock with Cooldown (modes = holding / not holding; the cooldown is a `+2` jump, so the base is `i >= n` and the roll keeps a day-after-tomorrow variable).
 
 ### Pattern 5: DFS + Memo on a Grid DAG
 When moves are forced to be strictly increasing (or otherwise can't cycle), `memo[r][c]` = the best path starting at `(r, c)`, computed once per cell.
@@ -261,3 +262,41 @@ Pick the element (or split point) handled **last** inside `[l, r]`. Its cost the
 * **Time & Space Complexity (final, `1eee9fd`):**
     * **Time:** **O(n1 · n2)**, one compare and one read (match) or two reads (mismatch) per cell.
     * **Space:** **O(min(n1, n2))**: two rows of the shorter length + 1, ~8 KB at the limits.
+
+### [3] Best Time to Buy and Sell Stock with Cooldown
+
+> Brute force `f27a473` (TLE), memo `901f2ed`, 2-D table `379542c`, two vectors `82827c2`, then three rolled variables (committed with this entry). The wall was reading the editorial's recursion: buy and sell made sense, but what "skip" meant didn't. After that, every version was right first time apart from returning the wrong mode's cell once.
+
+* **The Core Pattern:** position + mode (§2 Pattern 4). **`f(i, holding)` = the most profit still makeable from day `i` onward, given whether I'm holding a stock.** Answer: `f(0, not holding)`. Base: `i >= n` → 0.
+    * **Rename the flag from "is buying allowed?" to "am I holding?"** It's a **mode**, not a permission. Then each day has one take and one skip per mode:
+
+      | mode on day `i` | take | skip (do nothing) |
+      |---|---|---|
+      | **not holding** | buy: `−prices[i] + f(i+1, holding)` | rest: `f(i+1, not holding)` |
+      | **holding** | sell: `+prices[i] + f(i+2, not holding)` | keep holding: `f(i+1, holding)` |
+
+    * **Skip = move to `i + 1` with the mode unchanged.** Only buying or selling flips the flag. Same shape as LIS and Partition: one take, one skip, `max` of the two.
+    * **The money goes into the return value**, not into a parameter: buy subtracts the price from what the future returns, sell adds it (Coin Change's "return the answer, don't carry it down").
+    * **The cooldown is the `i + 2` on sell.** So the base case must be `i >= n`, not `i == n`: a sale on the last day jumps to `n + 1`.
+    * **Still holding at the end is fine at 0.** The buy branch already paid `−price`, so `max` never keeps a buy it can't sell at a profit. No "impossible" sentinel needed in suffix framing.
+
+* **Stumble 1: what is the skip?** I had both takes right (buy → can't buy again, sell → `i + 2`) and called them both "taking", then couldn't see where skipping fit. **Without the skip, the recursion must act the moment it's allowed, which is greedy.** `[1, 2, 4]`: always-act sells at 2 (profit 1); holding one more day and selling at 4 makes 3. `[1, 2, 3, 0, 2]` (want 3): holding to sell at 3 gives 2, because the cooldown lands on the day of the 0; resting on day 0 gives 1. Only exploring every rest/hold finds that sell-at-2, cooldown, buy-at-0, sell-at-2 is the best.
+
+* **The table (`379542c`) was the checklist run straight through** (§1 "Memo → Table"):
+    * **`n + 2` rows, not `n + 1`.** The sell reads `i + 2`, so a sale on the last day reads row `n + 1`. Two zero rows are the `i >= n` base; nothing to seed.
+    * `i` downward (all calls go to `i + 1` / `i + 2`). The inner mode loop order doesn't matter: `j = 0` reads `dp[i+1][1]`, the row below.
+    * **The cost was all in the layout.** `vector<vector<int>>` with **2-wide rows** = n + 3 heap allocations, each ~16 B of malloc header + a 24 B `vector` header to hold 8 B of data. Measured at n = 5000: memo 112 µs, **table 83 µs** (only 1.35× over the memo), flat `2 × (n+2)` array 5.4 µs. **~94% of the table's time was `malloc`.** On LCS the rows were 1000 wide, so the allocations hid behind real work; here each row is two `max`es.
+
+* **Two vectors (`82827c2`): 83 → 4.8 µs.** `buyDp` and `sellDp` of `n + 2` each.
+    * **"Does the order of the two lines matter?" Not here.** `buyDp[i]` reads `[i+1]`, `sellDp[i]` reads `[i+1]` and `buyDp[i+2]`: neither reads index `i`, so neither depends on the other. Swapped and fuzzed: 0 wrong. **Order only starts to matter once the rows are rolled into variables**, where new and old share a name.
+    * **Stumble 2: returned `sellDp[0]`.** That's `f(0, holding)`: "start day 0 already holding a stock I **got for free**". On `[1, 2, 3, 0, 2]` it returns **4**: sell the free stock at 2, cool down, buy at 0, sell at 2. **The answer is the top-level call's cell** (checklist row 4; Partition's `dp[0][0]` was the same mistake). The names caused it: `buyDp` / `sellDp` name the action you *may* take, not the state you're *in*. `notHolding` / `holding` would have made the right return obvious.
+
+* **The final version: three variables, O(1).** The loop only reads `i + 1` (both modes) and `i + 2` (not-holding only), so keep `buyTomorrow`, `sellTomorrow`, `buyDayAfterTomorrow`.
+    * **Compute both of today's values into temporaries first, then shift.** The sell reads the day-after's not-holding value; if `buyTomorrow` were overwritten before that read, it would read today's.
+    * **The shift order:** `buyDayAfterTomorrow = buyTomorrow` **before** `buyTomorrow = buyToday`. Reverse them and the day-after slot gets today's value.
+    * **Return `buyTomorrow`:** after the last iteration (`i = 0`) the shift moved `buyDp[0]` into it. The inline comments mapping each variable to its `dp[...]` cell are what kept this straight.
+    * **4.8 → 2.8 µs at n = 5000**, no allocations. 30× over the 2-D table.
+
+* **Time & Space Complexity (final):**
+    * **Time:** **O(n)**, two `max`es per day. Optimal: every price has to be seen.
+    * **Space:** **O(1)**, three `int`s.
