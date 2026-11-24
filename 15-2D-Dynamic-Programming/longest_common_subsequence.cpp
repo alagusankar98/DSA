@@ -1,18 +1,17 @@
-int longestCommonSubsequenceHelper(std::string_view text1, std::string_view text2, std::vector<std::vector<int>>& dp, size_t i, size_t j) {
-    if(i >= text1.size() || j >= text2.size()) return 0;
-
-    if(dp[i][j] != -1) return dp[i][j];
-
-    int count = 0;
-    if(text1[i] != text2[j]) {
-        count = std::max(longestCommonSubsequenceHelper(text1, text2, dp, i, j + 1), longestCommonSubsequenceHelper(text1, text2, dp, i + 1, j));
-    } else {
-        count = 1 + longestCommonSubsequenceHelper(text1, text2, dp, i + 1, j + 1);
+int longestCommonSubsequence(string text1, string text2) {
+    const int n1 = static_cast<int>(text1.size());
+    const int n2 = static_cast<int>(text2.size());
+    std::vector<std::vector<int>> dp(n1 + 1, std::vector<int>(n2 + 1 ,0));
+    
+    for(int i = n1 - 1; i >= 0; i--){
+        for(int j = n2 - 1; j >= 0; j--){
+            if(text1[i] != text2[j]) {
+                dp[i][j] = std::max(dp[i][j + 1], dp[i + 1][j]);
+            } else {
+                dp[i][j] = 1 + dp[i + 1][j + 1];
+            }
+        }
     }
 
-    return dp[i][j] = count;
-}
-int longestCommonSubsequence(string text1, string text2) {
-    std::vector<std::vector<int>> dp(text1.size(), std::vector<int>(text2.size() ,-1));
-    return longestCommonSubsequenceHelper(text1, text2, dp, 0, 0);
+    return dp[0][0];
 }
