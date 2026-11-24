@@ -44,6 +44,35 @@ All three are **above or to the left**, so a plain row-major fill (`i` increasin
 * **Grid recursion from Graphs (topic 12):** a DFS over cells with a memo is DP on a grid. When the moves can never return to a cell (for example, only to strictly larger values), the grid is a **DAG**, so no visited set is needed and each cell's answer is computed once.
 * **Bellman-Ford in Advanced Graphs `[6]`:** `dp[r][v]` with `prev`/`current` rows was a 2-D table rolled to two rows, the same move as Partition's two rows.
 
+### Memo → Table: The Translation (do it, don't intuit it)
+**Writing the table by translating your memo is the standard method, not a crutch.** People who seem to write tables directly are running this translation in their heads. Write the memo first, then fill in these five rows for the problem, then write the loops.
+
+| In the memo | In the table |
+|---|---|
+| **1. Parameters** `(i, j)` | Table indices `dp[i][j]`, one loop per parameter. Size = every value a parameter can take, **including the base-case values** (`i == n1` exists, so `n1 + 1` rows). |
+| **2. Base case** (`if (i == n1 \|\| j == n2) return 0`) | The table's edge cells. If the base value is 0, a zero-filled table already has it; otherwise seed those cells **before** the loops. |
+| **3. Recursive calls** (`f(i+1, j)`, `f(i, j+1)`, `f(i+1, j+1)`) | **Reads** of cells that must already be filled when `(i, j)` is computed. The body's `if`s, `max`es and gates carry over word for word. |
+| **4. Top-level call** `f(0, 0)` | Where the answer is: `return dp[0][0]`. |
+| **5. Loop direction** | Follows from row 3, and it's the **only** decision. Calls go to `i + 1` → `i` loops **downward**. Calls go to `i − 1` → upward. Do this per index. |
+
+**The picture: a table is the memo filled in before anyone asks.** The recursion starts at `f(0, 0)`, dives to the base cases, and fills the memo on the way back **up**. The table skips the dive. It starts at the base cases and fills cells in the order the recursion would have **returned** them. Same cells, same formula, same completion order; it just never makes a call.
+
+**Worked through on LCS `[2]`** (memo `1b48e68` → table `9e62f2e`):
+1. `f(i, j)`, `i ∈ [0, n1]`, `j ∈ [0, n2]` → `dp` is `(n1 + 1) × (n2 + 1)`.
+2. Either suffix empty → 0 → row `n1` and column `n2` are 0. Zero-filled table, nothing to seed.
+3. Calls: `(i+1, j+1)`, `(i+1, j)`, `(i, j+1)`: below, diagonal and right.
+4. `f(0, 0)` → `dp[0][0]`.
+5. Every call increases `i` or `j` → both loops run **downward** (`n1 − 1 → 0`, `n2 − 1 → 0`).
+
+**What changes on the way over (every one of these has bitten me):**
+* **The `-1` sentinel and the `if (dp[i][j] != -1)` check disappear.** The loop order guarantees every cell read is already written (Fibonacci's "loop order replaces the check").
+* **The early `return` for the base case disappears too.** It becomes the edge cells, so the loops start just inside them (`n1 − 1`, not `n1`).
+* **A table fills every state.** No variable carries "the current path" across iterations (LIS's single `prevIdx`), and a skip branch can't be dropped by starting a loop late (Partition's `left` loop starting at `nums[i]`).
+* **Keep the memo's indexing.** Suffix memo → loops run right to left; prefix memo → left to right. Don't flip the indices to make the loops "look normal": that's how a seed ends up in the wrong cell (Unique Paths Stumbles 2 and 3).
+* **The answer is the top-level call's cell**, not the last cell written and not the base (Partition's `return dp[0][0]` asked "can I make 0?").
+
+Only once the table passes, roll it (next section).
+
 ### Rolling a 2-D Table Down to One Row
 If row `i` only reads row `i − 1`, keep two rows, or one row updated in place. In place, a cell holds the **old** row's value until you overwrite it:
 * **Up** `(i−1, j)` is the cell itself before you write it. Free.
@@ -86,6 +115,7 @@ Each cell combines the neighbours that can step into it (usually up and left).
 ### Pattern 2: Two Sequences → `dp[i][j]` over prefixes, with an empty row and column
 Decide on the **last characters** `a[i − 1]`, `b[j − 1]`: match (diagonal), or drop one from either side (up / left).
 * *Discipline:* table is `(m + 1) × (n + 1)`, and cell `(i, j)` reads characters `i − 1` and `j − 1`. Fill the empty row and column first and say what each means ("turning `a[0..i)` into an empty string takes `i` deletions"). One row needs a saved diagonal.
+* *Use for:* Longest Common Subsequence (suffix framing: the extra row and column are "empty suffix → 0", so no seeding; match = `1 + diagonal`, never needs the skips).
 
 ### Pattern 3: Counting Knapsack → count ways to reach a target
 Partition's table, but cells hold counts (`+`) instead of `||`.
@@ -188,3 +218,46 @@ Pick the element (or split point) handled **last** inside `[l, r]`. Its cost the
 * **Time & Space Complexity (final, one row):**
     * **Time:** **O(m · n)**, one addition per cell.
     * **Space:** **O(n)**, one heap allocation; 400 bytes at the limits, lives in L1.
+
+### [2] Longest Common Subsequence
+
+> Brute force `30d70b9` (TLE), memo `1b48e68`, 2-D table `9e62f2e`, then `1eee9fd`: two rows with `swap`, and the longer string forced onto the outer loop. The walls were all in the model before any code: an "anchor and restart" greedy walk, and a recursion that could only skip in one string and added two alternative futures together.
+
+* **The Core Pattern:** two sequences (§2 Pattern 2), in **suffix** framing. **`f(i, j)` = the LCS of `text1[i..]` and `text2[j..]`.** Answer: `f(0, 0)`. Base: either suffix empty → 0.
+    * **Match** (`text1[i] == text2[j]`): `1 + f(i+1, j+1)`, pair them and move both.
+    * **Mismatch:** at least one of the two characters is not in the answer *paired with the other*, and you don't know which, so try both: `max(f(i+1, j), f(i, j+1))`.
+    * **The subsequence rule is "pairs don't cross"**, not anything about `i` vs `j`. They index different strings and move independently (`"xxxxa"` / `"a"` pairs index 4 with index 0). Moving both forward after a match is what keeps the pairs from crossing; nothing else needs checking.
+
+* **Stumble 1: the first plan was a greedy walk, not a recursion.** "Anchor `i`, walk both strings taking every match, restart from `i + 1` when one runs out." Same mistake as LIS's "take whenever you can": from each anchor it follows **one** path, and the restart only skips characters of `text1` *before* the walk, never in the middle. `"abcd"` / `"acbd"` (want 3, `"abd"`):
+
+  | step | `text1[i]` | `text2[j]` | action | count |
+  |---|---|---|---|---|
+  | 1 | a | a | match | 1 |
+  | 2 | b | c | mismatch, j++ | 1 |
+  | 3 | b | b | match | 2 |
+  | 4 | c | d | mismatch, j++ | 2 |
+  | 5 | | end | stop | **2** |
+
+    Matching `b` used up `text2` past its `c`, and then `c` in `text1` ate the rest of `text2`, so `d` never got a turn. Every restart scored ≤ 2. The "`i >= j` to enforce the subsequence" idea was a second false constraint on top.
+
+* **Stumble 2: the first recursion had two bugs, 126,078 wrong out of 200,000.**
+    * **Only one skip.** The only call besides the match was `(i, j + 1)`, so a character of `text1` could never be dropped. `"ab"` / `"b"` → 0: `a` finds nothing, `j` runs off the end, and `b` is never reached. **LIS had one sequence and one skip. Two sequences means two skips.**
+    * **`count += max(take, count)`.** The `max` already picks the winner between take and skip; adding it to `count` stacks the skip result on top. `"a"` / `"aa"` → **2**: `f(0, 1)` = 1, then at `f(0, 0)` the match adds `max(1, 1)` to that 1. Take and skip are **alternative futures**, so they combine with `max`, never `+`. (LIS's first draft had the same shape with `=` overwriting the best.)
+
+* **Insight: on a match you never need the skips.** It's tempting to write `max(1 + diag, skip i, skip j)` "to be safe", and that's correct, but the plain `1 + diag` is too. Take any best answer that doesn't pair `(i, j)`. Its first pair uses `text1[i]`, or `text2[j]`, or neither. Replace that first pair with `(i, j)`: nothing crosses (everything else is to the right in both strings), and the length doesn't drop. So pairing equal front characters is never worse, and a matched cell costs one read.
+
+* **The table (`9e62f2e`) was a straight transliteration.** `(n1+1) × (n2+1)`, all zeros, both loops downward because a cell reads **below, right and diagonal-down-right**, all already filled. The extra row `n1` and column `n2` are the "empty suffix → 0" base, so **no seeding at all**: the Unique Paths seeding bugs had nowhere to happen. 0 wrong on 200k fuzz. Measured on two random 1000-char strings: **memo 4.5 ms → table 0.90 ms** (5×, a million recursive calls with `-1` checks vs a tight loop).
+
+* **Two rows (`1eee9fd`): O(n) space, 2.4× faster.** Row `i` reads only row `i + 1`, so `current` and `next` of `n2 + 1` ints, `swap` after each row, answer `next[0]` (the last row written, after the final swap).
+    * **Why `swap` is safe here (Partition's Stumble 4 rule):** every `j` from `n2 − 1` down to 0 is written each row, by the `max` or by `1 + diagonal`. So whatever was left on the board from two rows ago is overwritten before it's read. The only unwritten cell is `[n2]`, the base column, and it starts at 0 in **both** buffers.
+    * **0.89 → 0.37 ms**, and 4 MB → 8 KB. The whole table didn't fit in L2; two rows sit in L1. Plus 2 allocations instead of n1 + 2.
+    * **The shorter string on the row is space only, not speed.** Measured: 1000 × 50 (short row) 0.034 ms vs 50 × 1000 (long row) 0.018 ms. Same n1 · n2 cells, but a 50-long inner loop pays the per-row overhead 1000 times. Both layouts are in L1 at these sizes, so the smaller row buys nothing in time. The committed swap (recurse once with the arguments flipped) is an O(min(n1, n2)) space remark, worth one sentence in an interview. (The review had told me to swap "for speed"; the numbers retracted that.)
+    * Parameters are `std::string_view`, fixing the table's by-value `std::string` copies.
+
+* **Not taken:**
+    * **One row with a saved diagonal.** Same speed as two rows (0.38 vs 0.36 ms). In place, `row[j + 1]` is already the new row ("right") and `row[j]` is still the old row ("below"), but the diagonal, the **old** `row[j + 1]`, was overwritten one step earlier. Save each cell's old value before writing it, hand it to the next `j` as the diagonal, reset it to 0 each row. Practice this before Edit Distance, which needs it.
+    * **Faster than O(n1 · n2):** none known in general. Bit-parallel LCS (64 columns per machine word, like Partition's bitset) is a systems talking point.
+
+* **Time & Space Complexity (final, `1eee9fd`):**
+    * **Time:** **O(n1 · n2)**, one compare and one read (match) or two reads (mismatch) per cell.
+    * **Space:** **O(min(n1, n2))**: two rows of the shorter length + 1, ~8 KB at the limits.
