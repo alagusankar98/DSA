@@ -4,8 +4,8 @@ int change(int amount, const std::vector<int>& coins) {
     current[0] = 1;
     
     for(int i = n - 1; i >= 0; i--) {
-        for(int fillAmount = 0; fillAmount <= amount; fillAmount++) {
-            if(fillAmount >= coins[i]) current[fillAmount] += current[fillAmount - coins[i]];
+        for(int fillAmount = coins[i]; fillAmount <= amount; fillAmount++) {
+            current[fillAmount] += current[fillAmount - coins[i]];
         }
     }
     

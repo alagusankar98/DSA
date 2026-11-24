@@ -120,6 +120,7 @@ Decide on the **last characters** `a[i − 1]`, `b[j − 1]`: match (diagonal), 
 ### Pattern 3: Counting Knapsack → count ways to reach a target
 Partition's table, but cells hold counts (`+`) instead of `||`.
 * *Discipline:* items outer, amounts inner counts **combinations**; amounts outer counts **orderings**. Unlimited use → amounts upward; once each → downward. Reduce first if the problem allows (an assignment of `+`/`−` signs is a subset choice). Watch for negative indices: shift by an offset, or reduce to a non-negative target.
+* *Use for:* Coin Change II (unlimited coins → one row, coins outer, amounts upward from the coin; `unsigned` cells because unreached amounts overflow while the answer fits).
 
 ### Pattern 4: Position + Mode → a small state machine per step
 `dp[i][s]` = best value at step `i` in mode `s`. Write the allowed transitions first, as a table or a diagram, then the code.
@@ -300,3 +301,52 @@ Pick the element (or split point) handled **last** inside `[l, r]`. Its cost the
 * **Time & Space Complexity (final):**
     * **Time:** **O(n)**, two `max`es per day. Optimal: every price has to be seen.
     * **Space:** **O(1)**, three `int`s.
+
+### [4] Coin Change II
+
+> Brute force `0bb5917` (TLE), memo `273881b`, 2-D table `059bd39`, two rows `a0b87f7`, then one row (`0fbfcf9`, with the loop start moved to the coin and committed with this entry). The walls: a first recursion that counted **orderings** (9 instead of 4), a table loop that started at the coin and dropped the skip (Partition's Stumble 2 again), and intermediate cells overflowing `int` even when the answer fits.
+
+* **The Core Pattern:** counting knapsack, unlimited supply (§2 Pattern 3). **`f(i, remaining)` = the number of ways to make `remaining` using only `coins[i..]`.** Answer: `f(0, amount)`.
+    * **Take** `coins[i]`: `f(i, remaining − coins[i])`. `i` **stays**, because the coin can be used again.
+    * **Skip** `coins[i]`: `f(i + 1, remaining)`. Done with this coin **forever**, and `i` moving is what makes it terminate.
+    * **The two branches add, not `max`.** They're two disjoint sets of piles (at least one more of this coin / none), and the question is *how many*, not *which is best*. Same take/skip as LCS and Stock; the combine operator comes from the question.
+    * Base: `remaining == 0` → 1 (the pile is complete), `remaining < 0` or no coins left → 0.
+
+* **Stumble 1: the first recursion counted orderings.** Three issues at once:
+    * **Base case on `remaining == 1`** instead of 0. Reaching exactly 0 is the one success.
+    * **A loop over coins *plus* take/skip inside it, with a skip that didn't move.** A call with identical arguments is the same call again, so it never bottoms out (LIS's first draft: loop and take/skip mixed).
+    * **Take-only over all coins answers a different question.** At each step it asks "which coin comes next?", so `1 2 2`, `2 1 2` and `2 2 1` are three branches. `[1, 2, 5]`, amount 5 (my hand trace said 8; run, it's 9):
+
+      | combination | orderings the loop counted |
+      |---|---|
+      | {1,1,1,1,1} | 1 |
+      | {1,1,1,2} | 4 |
+      | {1,2,2} | 3 |
+      | {5} | 1 |
+      | **4** | **9** |
+
+      That's Combination Sum IV, not this problem. **The fix: count each pile once, in one fixed order**: coins in list order, and once you move past a coin you never go back. That's exactly what the `i` parameter enforces: `2 1` is impossible because after skipping the 1 you can't return to it.
+
+* **Stumble 2: the table started its loop at `coins[i]` (31,045 wrong / 100k).** I did it to avoid a negative index on the take, and forgot the skip is legal for every amount. Smallest: **amount 1, coins `[6, 1]`** → 0, want 1. Row 1 (coin 1) gets `dp[1][1] = 1`; row 0 (coin 6) starts at 6 > 1, so `dp[0][1]` is never written and stays 0 instead of the skip value `dp[1][1]`. **Partition's Stumble 2 word for word: skip is always legal, take only when it fits.** The fix keeps the loop at 0 and guards only the take with `if (fillAmount >= coins[i])`. (Also fixed: `n + 1` rows, and seeding `dp[i][0] = 1` for every row and the `i == n` row to 0 explicitly.)
+
+* **Stumble 3: cells nobody asked about overflow `int`.** amount = 4999, coins `[2, 4, 6, 8, 10]`: answer **0** (even coins can't make an odd amount), which fits, so LeetCode allows it. But the table also fills every even amount below it, and the ways to make 4998 are over 10¹²: UBSan `signed integer overflow: 2144759510 + 5447085`, and LeetCode's sanitizers report it as a runtime error. The memo didn't have it: from 4999, subtracting even coins only reaches odd amounts, all 0. **A table fills every state, including ones the real question never reaches.**
+    * **The fix is `unsigned`, and it's principled, not a band-aid:** (1) unsigned arithmetic wraps mod 2³², defined behaviour; (2) the table **only adds**, so every cell is its true count mod 2³²; (3) the answer is guaranteed < 2³¹, so "right mod 2³²" means exactly right, and the final `static_cast<int>` is exact. Checked against Python big integers: `[2,4,6,8,10,4001]`, amount 4999 → 22,849,600 exactly, with cells reaching ~2³⁴.
+    * **`long long` would be the band-aid:** it only moves the wall. Ways to make 4998 from all even coins is ~2¹⁷¹.
+    * **The trick only works because nothing but `+` touches the counts.** A `max`, a comparison or a division on wrapped values is garbage, so it's for counting DP only, never for LCS- or Coin-Change-I-style "best value" tables.
+    * Interview line: "intermediate cells for amounts we don't need can exceed 32 bits; unsigned makes the wraparound defined, and since it's all additions and the answer is < 2³¹, the final cell is exact."
+
+* **From the table to one row: five deletions, each one still correct.** I said I could never have written the final version from the recursion. Nobody does; this is the derivation:
+    1. **Recursion:** take `(i, rem − coin)`, skip `(i + 1, rem)`.
+    2. **Table:** take reads **the same row** `i`, skip reads **the row below** `i + 1`.
+    3. **Two rows** (`a0b87f7`): only the row below is ever needed. `swap` is safe because the loop from 0 writes every cell (Partition's Stumble 4 rule). 1,273 → 445 µs, 6 MB → 40 KB.
+    4. **One row:** in two rows, `current[f] = next[f]` copies the row below into the same slot. With one row, that slot *already holds* the row below's value, so it's a self-copy. Delete it, and `next` disappears. 445 → 343 µs.
+    5. **Loop starts at the coin:** cells below the coin are now never touched, so they keep the row below's value, which *is* the skip. The `if` becomes the loop bound. 343 → **164 µs** (large coins skip most of the row). **This is exactly Stumble 2's loop start, and with one row it's correct.**
+
+* **Why upward (and why Partition went downward).** The take reads `row[f − coin]`. Here that's the **same row** (the coin can be reused), so in place it must already hold **this** row's value: visit smaller amounts first, **upward**. In Partition the take read row `i + 1` (each element once), so it had to still hold the **old** row's value: **downward**. Same question as Unique Paths and LCS: *for the cell I read, do I want the old row or the new one?* **Unlimited → upward, once → downward.**
+    * The final line in words: **"for each coin, every amount `coin` below is reachable here too, with one more of this coin."**
+    * **Keep coins as the outer loop.** Amounts outside and coins inside counts orderings: Stumble 1's 9 in loop form.
+
+* **Time & Space Complexity (final):**
+    * **Time:** **O(n · amount)**, one add per (coin, amount ≥ coin).
+    * **Space:** **O(amount)**: one row of `amount + 1` unsigned ints, ~20 KB at the limits.
+    * Measured at `-O2`, 300 random coins, amount 5000: 2-D table 1,273 µs → two rows 445 → one row 343 → loop from the coin **164 µs** (7.8×).
