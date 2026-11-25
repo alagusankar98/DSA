@@ -132,6 +132,7 @@ Partition's table, but cells hold counts (`+`) instead of `||`.
 ### Pattern 5: DFS + Memo on a Grid DAG
 When moves are forced to be strictly increasing (or otherwise can't cycle), `memo[r][c]` = the best path starting at `(r, c)`, computed once per cell.
 * *Discipline:* no visited set: the ordering already rules out cycles. Run it from **every** cell, and the answer is the max over all. Mind the recursion depth on large grids.
+* *Use for:* Longest Increasing Path in a Matrix (count cells: `count = 1`, dead end returns 1; the memo is the final form, since a table needs value order: Kahn's peeling from the peaks, layers = answer).
 
 ### Pattern 6: Interval DP → `dp[l][r]` from smaller ranges inside
 Pick the element (or split point) handled **last** inside `[l, r]`. Its cost then depends only on the range boundaries, and the two sides become independent subproblems.
@@ -516,3 +517,55 @@ Pick the element (or split point) handled **last** inside `[l, r]`. Its cost the
 * **Time & Space Complexity (final, `f2d564b`):**
     * **Time:** **O(n1 · n2)**, two compares and two reads per cell.
     * **Space:** **O(min(n1, n2))**: one row of the shorter length + 1 bytes.
+
+### [7] Longest Increasing Path in a Matrix
+
+> Brute force `fec67e6` (TLE), memo `ec86b24` (counting steps), `3326ac6` (counting cells inside the helper), then the grid dimensions hoisted in the helper. No real wall in the recursion: the model came together in one brainstorm. The open questions were which counting convention is standard, and the editorial's "peeling the onion" table, which went over my head.
+
+* **The Core Pattern:** DFS + memo on a grid DAG (§2 Pattern 5). **`f(r, c)` = the number of cells in the longest strictly increasing path *starting* at `(r, c)`.** `f = 1 + max f(neighbour)` over in-bounds neighbours with a **strictly larger** value; no such neighbour → 1. Answer: **max of `f` over every cell** (a path can start anywhere).
+    * **No `seen`, and why:** every step goes to a strictly larger value, so returning to a cell would need a value larger than itself. No cycles → the grid is a DAG. Compare Word Search (Backtracking): moves in any direction, so it needed `seen` and an undo, and could not be memoized.
+    * **Why caching is valid:** whether a step is legal depends only on the current cell's value, never on how you got there. So the longest path *from* `(r, c)` is the same for every caller. Each cell computed once × 4 neighbours = **O(m · n)**, even though the top level starts a search from every cell.
+
+* **Counting steps vs counting cells (my question: which is standard?).** Both are the same recursion with the starting cell's `+ 1` in a different place:
+
+  | | `ec86b24` (steps) | `3326ac6` (cells, standard) |
+  |---|---|---|
+  | `f(r, c)` means | most **moves** from here | most **cells** from here |
+  | dead end | 0 | 1 |
+  | `count` starts at | 0 | **1** |
+  | top level | `max(…, 1 + f)` | `max(…, f)` |
+
+    **Cells is better because each cached value *is* the answer for that start**, with no adjustment the caller has to know about, and the base case falls out: `count = 1` ("at least this cell"), and a dead end just never updates it. The two edits (start at 1, drop the top-level `+ 1`) have to be made **together**, or every answer is off by one. Check: `[[1, 2]]` → 2.
+
+* **Insight: the memo is the right final form here, and the plain table is not.** The checklist (§1 "Memo → Table") picks the loop order from where the calls point: `i + 1` → loop downward. Here a cell's calls point at **larger-valued neighbours**, which can be in any direction. So the fill order comes from the **values**, not the positions. The naive table sorts all m·n cells by value (largest first) and fills them in that order: O(mn log mn), measured **5× slower** than the memo. First problem in the topic where memo → table isn't an improvement.
+
+* **"Peeling the onion" (the editorial's table, the part that went over my head).** It finds that value order **without sorting**, using Kahn's algorithm from Course Schedule II (`12-Graphs/README.md`).
+    * **Peaks first.** A **peak** is a cell with no strictly larger neighbour. Its longest path is just itself: `f = 1`. Peel all peaks off as **layer 1**.
+    * **Then whatever became a peak.** Once a cell's larger neighbours have *all* been peeled, nothing above it is left, so it's a peak of what remains: **layer 2**. Keep peeling. **The number of layers is the answer.**
+    * **Trace on LeetCode's example** `[[9, 9, 4], [6, 6, 8], [2, 1, 1]]` (answer 4: `1 → 2 → 6 → 9`):
+
+      | layer | cells peeled (value at row, col) | why now |
+      |---|---|---|
+      | 1 | 9 (0,0), 9 (0,1), 8 (1,2) | no larger neighbour at all |
+      | 2 | 4 (0,2), 6 (1,0), 6 (1,1) | their larger neighbours (the 9s, the 8) are gone |
+      | 3 | 2 (2,0), 1 (2,2) | 2's larger neighbour 6 (1,0) is gone; 1 (2,2)'s larger neighbour 8 is gone |
+      | 4 | 1 (2,1) | its larger neighbours 6 (1,1) and 2 (2,0) are finally gone |
+
+    * **Why layer number = `f`:** a cell is peeled only after **all** its larger neighbours, and the last of them to go was in the previous layer. So a cell in layer k has a larger neighbour in layer k − 1, which has one in layer k − 2, … down to a peak: a path of exactly k cells, and none longer. **The layer number *is* `dp[r][c]` in the cells convention**, and peeling order *is* the table's fill order: every larger neighbour done before the cell that reads it.
+    * **Where "topological sort" comes in:** a topological order lists every node after all the nodes it depends on. Here a cell depends on its larger neighbours (its `f` reads theirs). Kahn's algorithm produces that order by repeatedly taking nodes with **zero unfinished dependencies**: count each cell's larger neighbours, queue the zeros (the peaks), and when a cell is peeled, decrement each smaller neighbour's count, queueing it when it hits 0. Course Schedule II did exactly this with prerequisites: a course becomes takeable once all its prerequisites are done.
+    * **Why it matters:** it's **iterative**, so no recursion depth. The memo's depth equals the longest path: 40,000 frames on a 200 × 200 snake (values increasing along a boustrophedon). That fit in 8 MB, even under ASan, but a 2000 × 2000 snake would overflow the stack. **"What if the grid were huge?" → Kahn's peeling.** Measured 0.35 ms on the snake (same as the memo) and 1.30 ms on random values (1.8× slower). A talking point, not something to code.
+
+* **Measured** at `-O2`, 200 × 200:
+
+  | version | snake (path 40,000) | random values |
+  |---|---|---|
+  | **memo (final)** | **0.32 ms** | **0.71 ms** |
+  | flat memo, dimensions read once | 0.20 ms | 0.50 ms |
+  | sorted-by-value table | 1.63 ms | 3.25 ms |
+  | Kahn's peeling | 0.35 ms | 1.30 ms |
+
+    The final version hoists `rows` / `columns` in the helper (the neighbour check no longer re-reads `matrix.size()`); the top-level loops still compare `int` against `matrix.size()` (`-Wsign-compare`, harmless). The flat memo's 1.4–1.7× is a constant factor and not interview material.
+
+* **Time & Space Complexity (final):**
+    * **Time:** **O(m · n)**: each cell computed once, 4 neighbours each. Optimal: every cell must be seen.
+    * **Space:** **O(m · n)** memo **plus O(m · n) worst-case recursion depth** (one frame per cell on the longest path).
