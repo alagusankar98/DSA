@@ -6,15 +6,12 @@ int numDistinct(std::string_view s, std::string_view t) {
 
     std::vector<unsigned int> current(n2 + 1, 0);
     current[n2] = 1;
-    std::vector<unsigned int> next(current);
 
     for(int i = n1 - 1; i >= 0; i--) {
-        for(int j = n2 - 1; j >= 0; j--) {
-            current[j] = next[j];
-            if(s[i] == t[j]) current[j] += next[j + 1];
+        for(int j = 0; j < n2; j++) {
+            if(s[i] == t[j]) current[j] += current[j + 1];
         }
-        std::swap(next, current);
     }
 
-    return static_cast<int>(next[0]);
+    return static_cast<int>(current[0]);
 }
