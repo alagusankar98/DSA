@@ -116,6 +116,7 @@ Each cell combines the neighbours that can step into it (usually up and left).
 Decide on the **last characters** `a[i − 1]`, `b[j − 1]`: match (diagonal), or drop one from either side (up / left).
 * *Discipline:* table is `(m + 1) × (n + 1)`, and cell `(i, j)` reads characters `i − 1` and `j − 1`. Fill the empty row and column first and say what each means ("turning `a[0..i)` into an empty string takes `i` deletions"). One row needs a saved diagonal.
 * *Use for:* Longest Common Subsequence (suffix framing: the extra row and column are "empty suffix → 0", so no seeding; match = `1 + diagonal`, never needs the skips).
+* *Use for:* Interleaving String (`s3`'s index is `i + j`, not a third axis; only the corner is a base case, so the last row and column must be computed; no skip move, `||` of two guarded takes).
 
 ### Pattern 3: Counting Knapsack → count ways to reach a target
 Partition's table, but cells hold counts (`+`) instead of `||`.
@@ -455,3 +456,63 @@ Pick the element (or split point) handled **last** inside `[l, r]`. Its cost the
 * **Time & Space Complexity (final, `32b2973`):**
     * **Time:** **O(n · P)**, P = (S + target) / 2 ≤ 1000.
     * **Space:** **O(P)**: one row of ≤ 1001 ints (~4 KB, L1).
+
+### [6] Interleaving String
+
+> Brute force `dfbbb52` (TLE), memo `ecf6332`, 2-D table `862ceeb`, two rows `5effae2`, one row `f2d564b`. The walls: a greedy "take from `s1` if it matches, else `s2`" plan with an off-by-one success check, not seeing why "neither matches → false" was right, a table whose loops started one cell in, and a rolled version that only wrote cells when a move was legal.
+
+* **The Core Pattern:** two sequences (§2 Pattern 2) where the third string's index is **derived**: **`f(i, j)` = "can `s1[i..]` and `s2[j..]` interleave into `s3[i+j..]`?"** `i + j` characters of `s3` are already placed, so `s3`'s position needs no index of its own.
+    * **Length check once, before anything:** `n1 + n2 != n3` → false. After that, "both strings used up" and "`s3` used up" are the same event, so there's **one** base case: `i == n1 && j == n2` → true.
+    * **Two moves, each with its own guard:** take from `s1` if `i < n1` and `s1[i] == s3[i+j]` → `f(i+1, j)`; take from `s2` if `j < n2` and `s2[j] == s3[i+j]` → `f(i, j+1)`. Combine with **`||`** (yes/no question). No legal move → false.
+
+* **Stumble 1: the first plan was greedy, and its success check was one character early.** Coded from my description and checked against a reference:
+
+  | s1 | s2 | s3 | mine | want | why |
+  |---|---|---|---|---|---|
+  | `a` | `ab` | `aba` | false | **true** | took `s1`'s `a` because it matched; the real interleaving starts with `s2` |
+  | `a` | (empty) | `b` | **true** | false | `i + j + 1 == n3` → true with `s3[0]` never compared |
+  | `ab` | (empty) | `a` | **true** | false | no length check: the leftover `b` was ignored |
+
+    * **When both tops match the next character, you can't know which string it came from: try both, `||`.** "Take from `s1` whenever it matches" is LIS's "take whenever you can" again; LCS's "you don't know which, so try both" is the fix, with `||` for `max`.
+    * At state `(i, j)`, **`i + j` characters are consumed**, so `i + j + 1 == n3` still has one to check. And "both used up → false" was backwards: that's the success state.
+
+* **Insight: why "neither matches → false" is immediate (the part I couldn't fully see).** Picture `s1` and `s2` as two face-up decks and `s3` as a riffle shuffle of them: every card is taken **from the top** of one deck (order kept), and **none is thrown away**. Reading `s3` back, each card must be the current top of deck 1 or deck 2, i.e. `s1[i]` or `s2[j]`. `s1 = "ab"`, `s2 = "cd"`, `s3 = "acxb"`: at `(1, 1)` the card is `x` and the tops are `b` and `d`. The `x` has to be placed **now**; it can't come from deeper in a deck and it can't be skipped. Nothing later in `s3` can rescue it.
+    * **Unlike LCS, there is no skip move.** LCS asks for the longest *common part*, so a mismatched character can be dropped. An interleaving accounts for **every** character in order. So each state has 0 legal moves (false), 1 (no choice), or 2 (try both).
+
+* **Stumble 2: starting the table loops at `n1 − 1`, `n2 − 1` to skip the bounds checks.** It returned false on true inputs: the corner's 1 never reached `(0, 0)`. `s1 = "a"`, `s2 = "b"`, `s3 = "ab"`:
+
+  | cell | meaning | value |
+  |---|---|---|
+  | `dp[1][1]` | both used up | 1 (base) |
+  | `dp[1][0]` | `s1` used up; does `"b"` spell `s3[1..] = "b"`? | **1**, but skipped by the loop, so 0 |
+  | `dp[0][1]` | `s2` used up; does `"a"` spell `"b"`? | 0 |
+  | `dp[0][0]` | take `a` from `s1` → `dp[1][0]` | should be 1 |
+
+    * **Starting one cell in only works when the whole last row and column are constants.** LCS: row `n1` / column `n2` mean "one string empty → LCS 0", every cell, so skipping them was free. Here **only the corner** is a constant; the rest of the last row is "can the leftover of the other string spell the rest of `s3`?", which depends on the characters, and it's the **only path** the corner's 1 can travel.
+    * **Read it off the memo's base case** (checklist row 2): LCS's was `i == n1 || j == n2` (whole edges are base); this one is `i == n1 && j == n2` (corner only), and the edges were ordinary guarded states in the memo. **`||` vs `&&` in the memo's base case tells you whether the loops can skip the edges.** The fix: loops from `n1` and `n2`, with the memo's `i < n1` / `j < n2` guards.
+
+* **Stumble 3: rolling to two rows leaked stale values (54,579 wrong / 200k).** The first rolled attempt kept the 2-D table's two `if`s, which wrote **into the cell** only when a move was legal. Smallest: `s1 = ""`, `s2 = "b"`, `s3 = "a"` → **true** (swapped to `s1 = "b"`, `s2 = ""`; one-cell rows, both buffers initialised to the corner's `[1]`):
+
+  | row | cell | `s1` move legal? | `s2` move legal? | written | value |
+  |---|---|---|---|---|---|
+  | i = 1 | j = 0 | no (`i == n1`) | no | nothing (the corner) | 1 ✓ |
+  | *swap* | | | | | |
+  | i = 0 | j = 0 | `b` vs `a`: no | no | **nothing** | **stale 1** ✗ |
+
+    * **Why the 2-D table got away with it:** every cell started at 0 and was visited once, so "not written" meant "still 0", the correct false. Once buffers are reused (two rows + `swap`, or one row), **"not written" means "still holding an old row's value"**. Partition's Stumble 4 rule: every cell of the new row must be written *by this row*, **including the false ones**. The second `if`'s `current[j] || current[j + 1]` had the same leak through `current[j]`.
+    * **The fix was already in my memo:** `bool resultFlag = false` fresh for every cell, the two `if`s update `resultFlag` (not the cell), and **`current[j] = resultFlag` always runs**. The memo did exactly that (`return dp[i][j] = resultFlag;`). The corner is the one cell with no legal move that is still true, so it gets its own `i == n1 && j == n2` case inside the loop.
+
+* **One row (`f2d564b`): drop `next`.** With `j` looping **downward**, `row[j]` before it's written is still the row below ("below"), and `row[j + 1]` was written this pass ("right"). **No diagonal**, so unlike LCS no saved variable. The strings are swapped so the row is the shorter one: O(min(n1, n2)) space (LCS: that's space only, not speed).
+
+* **Measured** at `-O2`, 100 + 100 chars:
+
+  | input | memo | 2-D table | one row |
+  |---|---|---|---|
+  | all `a`s, `s3` ends in `b` (false, every state explored) | 48.0 µs | 9.9 µs | 12.0 µs |
+  | random 2-letter, true | **2.7 µs** | 10.6 µs | 6.1 µs |
+
+    The memo's `||` stops at the first path that reaches the corner, so on true inputs it beats every table; the table always fills all cells and wins when every state must be explored. Same trade as Partition and Target Sum. The one row's win is space: ~10 KB → ~100 bytes, which is LeetCode's follow-up ("O(s2.length) extra memory").
+
+* **Time & Space Complexity (final, `f2d564b`):**
+    * **Time:** **O(n1 · n2)**, two compares and two reads per cell.
+    * **Space:** **O(min(n1, n2))**: one row of the shorter length + 1 bytes.
