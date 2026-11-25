@@ -2,3 +2,6 @@ track_progress*.md filter=git-crypt diff=git-crypt
 roadmap.md filter=git-crypt diff=git-crypt
 review.md filter=git-crypt diff=git-crypt
 .agents/** filter=git-crypt diff=git-crypt
+Debugging/bug-log.md filter=git-crypt diff=git-crypt
+resume-log.md filter=git-crypt diff=git-crypt
+resume/** filter=git-crypt diff=git-crypt
