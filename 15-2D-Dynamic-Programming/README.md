@@ -120,6 +120,7 @@ Decide on the **last characters** `a[i − 1]`, `b[j − 1]`: match (diagonal), 
 * *Use for:* Longest Common Subsequence (suffix framing: the extra row and column are "empty suffix → 0", so no seeding; match = `1 + diagonal`, never needs the skips).
 * *Use for:* Interleaving String (`s3`'s index is `i + j`, not a third axis; only the corner is a base case, so the last row and column must be computed; no skip move, `||` of two guarded takes).
 * *Use for:* Distinct Subsequences (counting with `+`: a match keeps the skip; base `j == n2 → 1` before `i == n1 → 0`; one row loops `j` **upward** because the take reads the diagonal).
+* *Use for:* Edit Distance (base = characters left, `(n1 − i) + (n2 − j)`, so the edges are seeded but not constant; mismatch is `1 + min` of replace / delete / insert; one row is the case that needs the saved diagonal, since `row[j + 1]` is both right and diagonal).
 
 ### Pattern 3: Counting Knapsack → count ways to reach a target
 Partition's table, but cells hold counts (`+`) instead of `||`.
@@ -620,3 +621,64 @@ Pick the element (or split point) handled **last** inside `[l, r]`. Its cost the
 * **Time & Space Complexity (final, `f1a7b35`):**
     * **Time:** **O(n1 · n2)**, one compare per cell, one add per match.
     * **Space:** **O(n2)**: one row of `n2 + 1` unsigned ints.
+
+### [9] Edit Distance
+
+> Brute force `d931372` (TLE), memo `a274ed4` → `339c666`, 2-D table `4c68b0b`, two rows `0eb3b30`, then `79164cd` (strings swapped so the row is the shorter one). The walls: a first idea that pulled the length difference out as a fixed cost, a base case that kept that idea alive, and a two-row initialisation that put the wrong values in both base edges. Stopped at two rows on purpose (see the end).
+
+* **The Core Pattern:** two sequences, minimise (§2 Pattern 2). **`f(i, j)` = the fewest operations to turn `word1[i..]` into `word2[j..]`.** Answer `f(0, 0)`.
+    * **Match** (`word1[i] == word2[j]`): `f(i+1, j+1)`, free.
+    * **Mismatch:** `1 + min` of three: **replace** → `(i+1, j+1)` (both characters dealt with), **delete** `word1[i]` → `(i+1, j)`, **insert** `word2[j]` in front → `(i, j+1)` (`word2[j]` is now satisfied, `word1[i]` still waiting). The `1 +` is the operation just spent, once, outside the `min`.
+    * **Base:** one word used up → **the number of characters left in the other**, one insert or delete each: `(n1 − i) + (n2 − j)`, which covers both cases and gives 0 when both are used up.
+
+* **Stumble 1: "the length difference is a constant, so count it up front".** True part: `|n1 − n2|` is a **lower bound** (nothing else changes the length). False part: it isn't a cost you can pull out before the recursion, and "count the non-common characters" ignores order:
+    * **`"abcd"` → `"bcda"`** (equal lengths, so the up-front cost is 0): position by position is 4 replaces, but **delete the front `a`, insert an `a` at the end = 2**. A delete + insert can beat replaces because it **shifts** everything after it into line. So the number of deletes isn't fixed until you know which characters line up.
+    * **`"ab"` → `"ba"`**: same characters, so "non-common" says 0; the answer is **2**. Order matters (LCS's "pairs don't cross").
+    * **`"abc"` → `"bc"`**: *which* character you delete is the whole problem (delete `a`: done; delete `c`: 2 more replaces).
+    * **Where the idea really belongs:** once **one word runs out** there's no choice left, and "the leftover length" *is* the cost. That's the base case, not a pre-computation.
+
+* **Stumble 2: the base case returned the whole-word difference, `|n2 − n1|`** (57,007 wrong / 200k, wrong in both directions: `"horse"` → `"ros"` 4 instead of 3, `"abcd"` → `"bcda"` 1 instead of 2). Smallest: **`"c"` → `"bc"` → 2, want 1** (insert `b`). The insert branch reaches `f(1, 2)`, both words used up, which should be **0**, but `|2 − 1|` charged 1 for comparing nothing with nothing; the delete branch `f(1, 0)` (still need `"bc"`) should be 2 and got 1. Stumble 1's constant leaking back in. **What's left is measured from `(i, j)`, not from the start.**
+
+* **Memo detail (`a274ed4` → `339c666`).** The first memo returned on a match *before* the lookup, so matched cells were never cached and each visit walked its diagonal of matches. Measured harmless (≤ 2.9 calls per cell on random and adversarial inputs), but the bound was measured, not guaranteed. `339c666` moved the lookup above the match line and stores match results too: O(n1 · n2) by construction.
+
+* **The 2-D table (`4c68b0b`):** checklist row 2 read off the memo's `i == n1 || j == n2` base: **the whole last row and column are base cells**, like LCS, but **not constant**: `dp[i][n2] = n1 − i` (delete the rest), `dp[n1][j] = n2 − j` (insert the rest), corner 0. Both edges seeded, both loops downward (reads below, right, diagonal-below-right).
+
+* **Stumble 3: the two-row initialisation (122,919 wrong / 200k).** Both buffers started as `[0, …, 0, n1]`. Smallest: **`""` → `"c"` → 0, want 1.** Two separate mistakes, both about which base value lives where:
+    * **The starting `next` must *be* the bottom row:** `[n2, n2 − 1, …, 1, 0]`. Every cell was wrong: the 0s should be "characters left to insert", and the last cell should be 0 (both used up), not `n1`. With `n1 = 0` the loop never runs and the bad starting row is returned as is.
+    * **The right column is one reused slot whose value changes every row.** In 2-D it was seeded once per row up front. With two rows, `current[n2]` must be set to **`n1 − i` at the start of each row**, because the `j` loop (from `n2 − 1`) never writes it; otherwise `current[j + 1]` at `j = n2 − 1` reads whatever the swap left behind. Interleaving's rule again: **every cell of the new row is written by this row**, including the one the loop skips.
+
+* **Final (`79164cd`):** two rows, strings swapped so the row is the shorter one (the distance is symmetric: insert and delete mirror each other; space only, as LCS showed).
+
+* **Measured** at `-O2`, 500 + 500 random chars, each version in its own process:
+
+  | version | 4 letters | 26 letters |
+  |---|---|---|
+  | memo `339c666` | 1,485 µs | 1,707 µs |
+  | 2-D `4c68b0b` | 258 µs | 307 µs |
+  | **two rows `0eb3b30`** | **120 µs** | **170 µs** |
+  | one row + saved diagonal (not committed) | 133 µs | 180 µs |
+
+    The memo is 6–12× slower than every table: no early exit, and three branches per mismatch make nearly every cell reachable, so recursion overhead buys nothing (unlike Interleaving, where `||` let the memo win on true inputs). Two rows: 1 MB → 4 KB, into L1.
+
+* **Why I stopped at two rows, and what one row would take.**
+    * **Why stop:** two rows is already **O(min(n1, n2)) space**, the optimal bound, and it measured **fastest**. One row with a saved diagonal measured **5–10% slower**: the extra variable shuffling per cell costs more than the one `swap` per row it replaces. Same space class, more code, slower. Nothing to gain except being able to explain it.
+    * **Why this is the one problem where a single row needs the saved variable.** The cell reads three neighbours, all through index `j` or `j + 1`:
+
+      | neighbour | 2-D cell | in one row | must be |
+      |---|---|---|---|
+      | below | `dp[i+1][j]` | `row[j]` before writing it | old ✓ (free) |
+      | right | `dp[i][j+1]` | `row[j+1]` | **new** (written this pass) |
+      | diagonal | `dp[i+1][j+1]` | `row[j+1]` | **old** |
+
+      **`row[j + 1]` would have to be new and old at once.** Downward `j` makes it new (right ✓, diagonal ✗); upward makes it old (diagonal ✓, right ✗). Interleaving needed only *right* (downward, done); Distinct Subsequences needed only *diagonal* (upward, done). **Edit Distance needs both, so no direction works**: the old value has to be saved before it's overwritten. (LCS's one-row version was the same case, parked there.)
+    * **What it would take:**
+        1. One row, initialised to the bottom row `n2 − j` (as `next` is now).
+        2. At the start of each row `i`: save the old `row[n2]` into a `diag` variable (it's the diagonal for `j = n2 − 1`), then set `row[n2] = n1 − i`.
+        3. For `j` from `n2 − 1` **down**: save `below = row[j]` (old) **before** writing; compute the cell from `diag` (diagonal), `below`, and `row[j + 1]` (right, new); write it; then **`diag = below`**: this cell's old value is the next `j`'s diagonal.
+        4. The answer is `row[0]`.
+
+      The traps: forgetting to reset `diag` from the old base cell at each row's start, and updating `diag` with the *new* value instead of the saved old one.
+
+* **Time & Space Complexity (final, `79164cd`):**
+    * **Time:** **O(n1 · n2)**, one compare and up to three reads per cell.
+    * **Space:** **O(min(n1, n2))**: two rows of the shorter length + 1 ints.
