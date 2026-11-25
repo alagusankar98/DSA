@@ -4,16 +4,17 @@ int numDistinct(std::string_view s, std::string_view t) {
 
     if(n2 > n1) return 0;
 
-    std::vector<std::vector<unsigned int>> dp(n1 + 1, std::vector<unsigned int>(n2 + 1, 0));
-
-    for(int i = 0; i <= n1; i++) dp[i][n2] = 1; // if(j == t.size()) return 1;
+    std::vector<unsigned int> current(n2 + 1, 0);
+    current[n2] = 1;
+    std::vector<unsigned int> next(current);
 
     for(int i = n1 - 1; i >= 0; i--) {
         for(int j = n2 - 1; j >= 0; j--) {
-            dp[i][j] = dp[i + 1][j];
-            if(s[i] == t[j]) dp[i][j] += dp[i + 1][j + 1];
+            current[j] = next[j];
+            if(s[i] == t[j]) current[j] += next[j + 1];
         }
+        std::swap(next, current);
     }
 
-    return static_cast<int>(dp[0][0]);
+    return static_cast<int>(next[0]);
 }
