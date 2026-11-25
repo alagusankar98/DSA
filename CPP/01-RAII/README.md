@@ -20,7 +20,10 @@
 * `NeetCode/01-Linked-List/readme.md` `[5]` Remove Nth Node: a stack-allocated dummy node (automatic cleanup) vs a `delete` you have to write yourself.
 * `NeetCode/08-Trees/README.md` Serialize/Deserialize: `new`-ed nodes the caller must free, and how `unique_ptr` children would make that automatic.
 
-**Already seen in C++:** none (first topic).
+**Already seen in C++:** none in this track yet. **But outside this repo** I already wrote RAII lock guards in a
+C++ gRPC distributed-file-system project (`ScopedFileLock`, `ScopedAsyncLock`: release a lock in the destructor
+so a client dying mid-transfer can't deadlock a file). Stage 1 can start from that code: what it got right, and
+whether it survives the two traps below and a copy.
 
 **Status:**
 - [ ] 1. Anchor + targeted reading
