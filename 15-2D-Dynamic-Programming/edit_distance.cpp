@@ -1,8 +1,7 @@
 int minDistanceHelper(std::string_view word1, std::string_view word2, const int n1, const int n2, int i, int j, std::vector<std::vector<int>>& dp) {
     if(i == n1 || j == n2) return ((n1 - i) + (n2 - j));
-    if(word1[i] == word2[j]) return minDistanceHelper(word1, word2, n1, n2, i + 1, j + 1, dp);
-
     if(dp[i][j] != -1) return dp[i][j];
+    if(word1[i] == word2[j]) return dp[i][j] = minDistanceHelper(word1, word2, n1, n2, i + 1, j + 1, dp);
 
     int count = std::min(minDistanceHelper(word1, word2, n1, n2, i + 1, j + 1, dp), minDistanceHelper(word1, word2, n1, n2, i + 1, j, dp));
     count = std::min(count, minDistanceHelper(word1, word2, n1, n2, i, j + 1, dp));
