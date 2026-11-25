@@ -25,14 +25,7 @@ C++ gRPC distributed-file-system project (`ScopedFileLock`, `ScopedAsyncLock`: r
 so a client dying mid-transfer can't deadlock a file). Stage 1 can start from that code: what it got right, and
 whether it survives the two traps below and a copy.
 
-**Status:**
-- [ ] 1. Anchor + targeted reading
-- [ ] 2. Experiments
-- [ ] 3. Write it from scratch
-- [ ] 4. Spot the bug + follow-up drill
-- [ ] 5. Capstone
-
-*Last session:* not started. **Anchor for stage 1:** my own cleanup problem from a C project. A mutex was
+**Anchor for stage 1:** my own cleanup problem from a C project. A mutex was
 locked and a key added, then 10 failure paths each needed a different mix of cleanups, handled with a pile of
 `goto` labels. Rewrite it with RAII, and run into the two traps that a "lock + add key in one constructor" design
 hides: **(a)** if adding the key throws, the destructor never runs (the object never finished constructing), so
