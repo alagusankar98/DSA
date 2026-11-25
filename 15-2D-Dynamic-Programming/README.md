@@ -121,6 +121,7 @@ Decide on the **last characters** `a[i − 1]`, `b[j − 1]`: match (diagonal), 
 Partition's table, but cells hold counts (`+`) instead of `||`.
 * *Discipline:* items outer, amounts inner counts **combinations**; amounts outer counts **orderings**. Unlimited use → amounts upward; once each → downward. Reduce first if the problem allows (an assignment of `+`/`−` signs is a subset choice). Watch for negative indices: shift by an offset, or reduce to a non-negative target.
 * *Use for:* Coin Change II (unlimited coins → one row, coins outer, amounts upward from the coin; `unsigned` cells because unreached amounts overflow while the answer fits).
+* *Use for:* Target Sum (reduce signs to a subset: P = (S + target) / 2, odd → 0; then count subsets with one row looping **downward**, since each number is used once).
 
 ### Pattern 4: Position + Mode → a small state machine per step
 `dp[i][s]` = best value at step `i` in mode `s`. Write the allowed transitions first, as a table or a diagram, then the code.
@@ -350,3 +351,107 @@ Pick the element (or split point) handled **last** inside `[l, r]`. Its cost the
     * **Time:** **O(n · amount)**, one add per (coin, amount ≥ coin).
     * **Space:** **O(amount)**: one row of `amount + 1` unsigned ints, ~20 KB at the limits.
     * Measured at `-O2`, 300 random coins, amount 5000: 2-D table 1,273 µs → two rows 445 → one row 343 → loop from the coin **164 µs** (7.8×).
+
+### [5] Target Sum
+
+> Brute force `bf5ae4a` (exponential, but n ≤ 20 so it passes), offset memo `d3400b2` → `3b359ed`, subset-sum memo `5c90423`, 2-D table `284c375`, one row `32b2973`. The walls: three base cases copied from Coin Change that don't hold when every number must be used, sizing a table for a range that goes negative, the sign → subset reduction itself, an early "success" that undercounted zeros, and the one-row loop direction.
+
+* **The Core Pattern, first form:** `f(i, remaining)` = the number of ways to sign `nums[i..]` so they add up to `remaining`. `+` branch: `f(i+1, remaining − nums[i])`; `−` branch: `f(i+1, remaining + nums[i])`; the two **add** (counting, Coin Change II). Answer `f(0, target)`.
+
+* **Stumble 1: Coin Change's base cases don't transfer (my first recursion, built from the description).** In Coin Change, coins were **optional** and only **subtracted**, so `remaining` only went down. Here **every number gets a sign** and a `−` *adds*. All three base cases broke:
+
+  | nums | target | got | want | why |
+  |---|---|---|---|---|
+  | `[2, 1]` | 1 | 0 | 1 | `remaining < 0 → 0` killed `+2` (rem −1), but `−1` brings it back to 0 |
+  | `[1, 1]` | 1 | **1** | 0 | `remaining == 0 → 1` fired after `+1` with the second 1 still unsigned |
+  | `[1, 0]` | 1 | 1 | 2 | same early success: the 0 can be `+0` or `−0`, two ways |
+  | `[1]` | 1 | 0 | 1 | `i == end → 0` checked *before* the success check |
+
+    **The fix is one base case: `if (i == n) return remaining == 0`.** A result exists only once every number has a sign. Checking both at the same moment also removes the ordering question. n ≤ 20 means ≤ 2²⁰ leaves (9.9 ms all-ones), so this brute force passes on LeetCode.
+
+* **Stumble 2: sizing the memo when `remaining` can be negative.** First version (`d3400b2`): non-negative values at `[0, S + |t|]`, negatives folded to `|r| + S + |t|`. Correct (no two values share a slot) but `2(S + |t|) + 1` wide.
+    * **The true range:** `remaining` starts at `target` and moves by `±nums[i]` per step, so it always lies in **`[target − S, target + S]`**, width **2S + 1**, centred on the target, not on 0 (fuzz-checked: never outside). One offset maps it: **index = `remaining − (target − S)`**. Plus `|target| > S → return 0` before allocating. 4001 → 2001 columns at the limits.
+    * **The accident in `3b359ed`:** with `absSum` declared `unsigned`, `target − absSum` converted `target` to unsigned (`1 − 3u` = 4,294,967,294), and the index came out right only because the next subtraction wrapped back. Correct mod 2³², like Coin Change II, but there the wrap was chosen and argued; here it was luck (`-Wsign-conversion` flags it). `S ≤ 1000` → keep it `int`, and pass one precomputed `offset = S − target`.
+
+* **The reduction: why and how signs become a subset** (the part I said I didn't understand a single thing of).
+    * **Two buckets.** Every number goes in the **plus** bucket (sum P) or the **minus** bucket (sum N). The total is **P − N**. Every number is in exactly one bucket, so **P + N = S** always. Knowing P fixes N = S − P, and so fixes the total: **total = 2P − S**. The minus signs aren't a separate decision; they're *everyone not picked for plus*.
+    * **On `[1, 2, 3]`** (S = 6), all 8 sign choices:
+
+      | signs | total | plus bucket | P |
+      |---|---|---|---|
+      | + + + | 6 | {1,2,3} | 6 |
+      | + + − | **0** | {1,2} | **3** |
+      | + − + | 2 | {1,3} | 4 |
+      | + − − | −4 | {1} | 1 |
+      | − + + | 4 | {2,3} | 5 |
+      | − + − | −2 | {2} | 2 |
+      | − − + | **0** | {3} | **3** |
+      | − − − | −6 | {} | 0 |
+
+      Total = 2P − 6 on every row. Target 0 ⟺ P = 3: two rows, two subsets ({1,2}, {3}). **Each sign choice is exactly one plus-bucket, and each plus-bucket exactly one sign choice**, so counting one counts the other.
+    * **Solve for P:** `2P − S = target` → **`P = (S + target) / 2`**. The question becomes **"how many subsets sum to P?"**: Partition's take/skip, counting instead of `||`.
+    * **Edge cases fall out of the algebra:** `S + target` odd → P isn't a whole number → **0** (target 1 on `[1,2,3]` needs P = 3.5, and no row totals 1). P < 0 can't happen after the `|target| > S` check.
+    * **How the two recursions are literally the same one.** At step `i` in the sign version, let R = the sum of `nums[i..]` (not yet signed). Define **`g = (remaining + R) / 2`**. Watch what each sign does to `g`:
+        * `+x`: remaining → remaining − x, R → R − x, so **g → g − x**. That's **take**.
+        * `−x`: remaining → remaining + x, R → R − x, so **g is unchanged**. That's **skip**.
+        * Start: `g = (target + S) / 2 = P`. End: R = 0, so `g = remaining / 2`, which is 0 exactly when remaining is 0.
+
+      Trace on `[1, 2, 3]`, target 0, path `+1 +2 −3`:
+
+      | after | remaining | R | g | subset move |
+      |---|---|---|---|---|
+      | start | 0 | 6 | **3** | |
+      | +1 | −1 | 5 | 2 | take 1 |
+      | +2 | −3 | 3 | 0 | take 2 |
+      | −3 | 0 | 0 | 0 | skip 3 ✓ |
+
+      **So the subset recursion is the sign recursion with `remaining` renamed to `g`: `+` became take, `−` became skip.** What the rename buys: `g` is never negative and never above P, so the range shrinks from `[t − S, t + S]` (2S + 1, needs an offset) to `[0, P]` (≤ S + 1, no offset). And because `g` only goes **down**, `remaining < 0 → 0` becomes a valid exit again.
+
+* **Stumble 3: early success undercounted zeros (22,704 wrong / 200k, every one with a 0 in `nums`).** The subset memo started with `if (remaining == 0) return 1`. Smallest: **`[0]`, target 0 → 1, want 2** (`+0` and `−0`; subsets `{}` and `{0}`). Taking a 0 doesn't change `remaining`, so every zero after the sum hits 0 still doubles the count. Partition could stop early because "yes" stays "yes"; **when counting, every element still has to make its choice.** Same bug as Stumble 1's `[1, 0]`, in the subset form. Fix: success only at `i == n`; keep `remaining < 0 → 0` first (valid now, and it guards the index).
+
+* **The 2-D table (`284c375`)** was the checklist: `(n + 1) × (P + 1)`, base `dp[n][0] = 1`, loop from 0 so the skip is written for every sum, take guarded by `remSum >= nums[i]` (Coin Change II's Stumble 2, not repeated).
+
+* **Stumble 4: the one-row loop ran upward (51,823 wrong / 200k).** Smallest: **`[1, 1]`, target 2** (P = 2, want 1: only `{1, 1}`). Row starts `1 0 0`:
+
+  | number | step | reads | row after |
+  |---|---|---|---|
+  | second 1 | r = 1 | `cur[0]` = 1 | `1 1 0` |
+  | second 1 | r = 2 | `cur[1]` = 1, **written one step ago by this same 1** | `1 1 1` ✗ |
+  | first 1 | r = 1, 2 | | `1 2 3` → **3** |
+
+  Downward, the same row gives `1 1 0` → `1 2 1` → **1** ✓.
+
+* **Why the direction only matters in the one-row version** (the other part I was murky on):
+    * **2-D table and two rows:** row `i` is written into one array and row `i + 1` is read from a **different** array. A write can never change something you're about to read, so **any loop order is correct**. That's why `284c375` loops upward and is right.
+    * **One row:** reads and writes share **the same memory**. Each cell holds the **old** row's value until you overwrite it, and the **new** row's value after. So for every cell you read, the question is: *have I already overwritten it this pass?* The loop direction decides the answer.
+    * The take reads `cur[r − x]`, a **smaller** index than `r`.
+        * **Upward** visits smaller indices first, so `cur[r − x]` is already **new**: it may already include this number. Using it again = **reuse**.
+        * **Downward** visits smaller indices last, so `cur[r − x]` is still **old**: subsets of the *other* numbers. Adding this number once = **use once**.
+    * **The direction isn't a property of the problem; it's how one array pretends to be two rows.** In the 2-D table, "old" and "new" are separate rows, so the choice is in the indices (`dp[i + 1][…]` vs `dp[i][…]`). In one row, it can only be expressed through visit order:
+
+      | problem | 2-D take reads | in place must be | one-row loop |
+      |---|---|---|---|
+      | Coin Change II | `dp[i][r − x]` (same row: reuse) | new | upward |
+      | Partition, Target Sum | `dp[i + 1][r − x]` (row below: once) | **old** | **downward** |
+      | Unique Paths | `row[c − 1]` (left, same row) | new | left → right |
+      | LCS | diagonal, old | old (saved in a variable) | — |
+
+    * **Zeros work in both directions:** `cur[r] += cur[r − 0]` reads the cell before writing it, so each zero doubles every count, which is right.
+
+* **Overflow: `int` is safe here, unlike Coin Change II.** Each cell counts subsets of a suffix, at most 2²⁰ ≈ 10⁶. "Use once" caps the counts; Coin Change II's unlimited reuse didn't.
+
+* **Measured** at `-O2`, n = 20:
+
+  | version | random values (S = 1007) | all 50s (S = 1000) |
+  |---|---|---|
+  | brute force `bf5ae4a` | 1,292 µs | 1,261 µs |
+  | offset memo `3b359ed` | 25.0 µs | 8.5 µs |
+  | subset memo `5c90423` | 12.5 µs | **0.88 µs** |
+  | 2-D table `284c375` | 4.0 µs | 3.9 µs |
+  | **one row `32b2973`** | **2.2 µs** | 2.2 µs |
+
+    The reduction halved the memo by halving the state range. On all-50s only multiples of 50 are reachable (~21 sums per row out of 501), so the memo beats every table: Partition's "table vs memo isn't one-sided" again.
+
+* **Time & Space Complexity (final, `32b2973`):**
+    * **Time:** **O(n · P)**, P = (S + target) / 2 ≤ 1000.
+    * **Space:** **O(P)**: one row of ≤ 1001 ints (~4 KB, L1).
