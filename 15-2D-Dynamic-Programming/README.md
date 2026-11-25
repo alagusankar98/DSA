@@ -78,6 +78,8 @@ If row `i` only reads row `i − 1`, keep two rows, or one row updated in place.
 * **Up** `(i−1, j)` is the cell itself before you write it. Free.
 * **Left** `(i, j−1)` was already overwritten this pass, so it's the **new** row's value. That's what you want for "left".
 * **Diagonal** `(i−1, j−1)` is the catch: it was overwritten one step ago. **Save it in a variable before overwriting each cell** (`diag = row[j]` before the write, used by the next `j`). Forgetting this is the classic one-row bug.
+* **Diagonal without left:** if a cell reads only up and the diagonal (no same-row neighbour), you don't need the saved variable: loop so the diagonal's index is visited **after** the cell, keeping it old (Distinct Subsequences `[8]`: suffix framing, `row[j + 1]` is the diagonal, so `j` runs **upward**).
+* **The direction rule in one line:** for each cell you read in place, ask whether it should be the **old** row (visit it later) or the **new** row (visit it first). The same index can need either: `row[j + 1]` was *right* (new) in Interleaving `[6]` and *diagonal* (old) in Distinct Subsequences `[8]`.
 * **Two rows with `swap`:** every cell of the new row must be written by this row (Partition Stumble 4).
 * **Which axis to keep:** roll along the longer one and keep a row the length of the **shorter** input. O(min(m, n)) space.
 
@@ -117,6 +119,7 @@ Decide on the **last characters** `a[i − 1]`, `b[j − 1]`: match (diagonal), 
 * *Discipline:* table is `(m + 1) × (n + 1)`, and cell `(i, j)` reads characters `i − 1` and `j − 1`. Fill the empty row and column first and say what each means ("turning `a[0..i)` into an empty string takes `i` deletions"). One row needs a saved diagonal.
 * *Use for:* Longest Common Subsequence (suffix framing: the extra row and column are "empty suffix → 0", so no seeding; match = `1 + diagonal`, never needs the skips).
 * *Use for:* Interleaving String (`s3`'s index is `i + j`, not a third axis; only the corner is a base case, so the last row and column must be computed; no skip move, `||` of two guarded takes).
+* *Use for:* Distinct Subsequences (counting with `+`: a match keeps the skip; base `j == n2 → 1` before `i == n1 → 0`; one row loops `j` **upward** because the take reads the diagonal).
 
 ### Pattern 3: Counting Knapsack → count ways to reach a target
 Partition's table, but cells hold counts (`+`) instead of `||`.
@@ -569,3 +572,51 @@ Pick the element (or split point) handled **last** inside `[l, r]`. Its cost the
 * **Time & Space Complexity (final):**
     * **Time:** **O(m · n)**: each cell computed once, 4 neighbours each. Optimal: every cell must be seen.
     * **Space:** **O(m · n)** memo **plus O(m · n) worst-case recursion depth** (one frame per cell on the longest path).
+
+### [8] Distinct Subsequences
+
+> Brute force `95b9bd4` (TLE, right first try), memo `822b901`, 2-D table `a46f570`, two rows `0c9447d`, one row `f1a7b35`. Once the base cases were settled the rest was mechanical. The bumps: a memo helper missing its `dp` argument, the unreached-cell overflow from Coin Change II, and the one-row loop that had to run the **opposite** way from Interleaving's.
+
+* **The Core Pattern:** two sequences, counting (§2 Pattern 2 with Pattern 3's `+`). **`f(i, j)` = the number of ways `s[i..]` contains `t[j..]` as a subsequence.** Answer `f(0, 0)`.
+    * **Skip `s[i]`:** `f(i + 1, j)`, always legal. **Take** (only if `s[i] == t[j]`): `f(i + 1, j + 1)`, use this character for `t[j]`. The two **add**: different choices of which `s` characters spell `t` are different subsequences.
+    * **Unlike LCS, a match does *not* make the skip redundant.** LCS asked for the *best* length, and taking a match was never worse. Here every way counts: `s = "aa"`, `t = "a"` has **2** (either `a`), and dropping the skip on a match would count 1.
+    * **Base-case order:** `j == n2 → 1` (all of `t` placed: one way) **before** `i == n1 → 0`. Finishing `t` exactly as `s` runs out is a success, so success wins (Partition's rule).
+    * **`n2 > n1 → 0`** before anything: a longer `t` can't fit.
+
+* **The table (`a46f570`):** `(n1 + 1) × (n2 + 1)`, column `n2` all 1s (**including** row `n1`: empty `t` is matched once, by picking nothing), row `n1` otherwise 0. Cell = below, plus diagonal on a match. Loops downward in both.
+
+* **Overflow again, and why the memo never had it.** `s` = 1000 × `a`, `t` = `"x"` + 500 × `a`: answer **0** (no `x`), but the table fills "ways to match the `a`s" for every `i`, up to C(1000, 500). Fixed with `unsigned` (Coin Change II's argument: only additions, answer < 2³¹, so the final cell is exact).
+    * **The memo uses plain `int` and is safe in principle, not by luck.** It only visits states **reachable** from `(0, 0)`. Reaching `(i, j)` means `t[0..j)` is already matched inside `s[0..i)`, so every way to finish from `(i, j)` extends that fixed prefix into a **different** full match: **`f(i, j)` ≤ the final answer** for every visited state. On the case above the memo never gets past `'x'`.
+    * **General rule for counting DP:** the memo only computes counts that are part of the answer, so it's safe whenever the answer fits; the table also computes counts the answer never uses, so it needs the wraparound argument. (Coin Change II's memo was safe for the same reason.)
+
+* **Two rows (`0c9447d`):** every `j` in `[0, n2)` is written each row (skip copies `next[j]`, take adds `next[j + 1]`), so `swap` is safe. The never-written base cell `[n2]` starts at 1 in **both** buffers because `next` is copied after `current[n2] = 1`: Partition's Stumble 4 rule plus Interleaving's corner, both handled.
+
+* **One row (`f1a7b35`): why the inner loop had to flip from downward to upward.**
+    * **The copy disappears.** In two rows, `current[j] = next[j]` (the skip) copies the row below into the same slot. In one row that slot already holds the row below's value, so the line goes (Coin Change II's deletion). Only the take is left: on a match, `row[j] += row[j + 1]`.
+    * **That take reads the *diagonal*, which must still be the OLD row.** In the table it's `dp[i + 1][j + 1]`: row `i + 1`, the row below. In place, `row[j + 1]` holds the old row's value only until this pass overwrites it. **So `j` must be visited before `j + 1`: loop `j` UPWARD.** Downward visits `j + 1` first, so `row[j + 1]` already holds **this** row's value, and the same `s[i]` gets used for both `t[j + 1]` and `t[j]`.
+    * **Smallest failure of the downward loop: `s = "aa"`, `t = "aa"` → 3, want 1** (46,690 wrong / 200k). Row starts `[t0, t1, base] = 0 0 1`:
+
+      | `s[i]` | downward, step by step | upward, step by step |
+      |---|---|---|
+      | `a` (i = 1) | j=1: `row[1] += row[2]` → 1 · j=0: `row[0] += row[1]` = **1 (just written)** → 1 ✗ | j=0: `row[0] += row[1]` = 0 → 0 · j=1: `row[1] += row[2]` → 1 |
+      | row after | `1 1 1` (claims one `a` spells `"aa"`) | `0 1 1` ✓ |
+      | `a` (i = 0) | j=1 → 2 · j=0: `row[0] += 2` → **3** | j=0: `row[0] += row[1]` = 1 → 1 · j=1 → 2 |
+      | answer | **3** ✗ | **1** ✓ |
+
+    * **Same index, opposite direction from Interleaving `[6]`.** Both read `row[j + 1]`. In Interleaving that cell was **right**, `dp[i][j + 1]`, the **current** row, so it had to be already written: **downward**. Here it's the **diagonal**, `dp[i + 1][j + 1]`, the **old** row, so it must not be written yet: **upward**. **The direction comes from which row the read belongs to, not from which index it is.**
+    * **Why no saved variable, unlike LCS's one-row diagonal:** LCS's cell read the diagonal **and** the right neighbour (`j + 1` in both rows), so one direction couldn't serve both and the old value had to be stashed. Here the cell reads only below (itself, `row[j]`, untouched until written) and the diagonal, so choosing the direction is enough.
+
+* **Measured** at `-O2`, `s` and `t` 1000 random chars, each version in its own process (in-process back-to-back runs skewed the numbers by order):
+
+  | version | 2 letters | 26 letters |
+  |---|---|---|
+  | memo `822b901` | 1,900 µs | 554 µs |
+  | 2-D `a46f570` | 897 µs | 1,005 µs |
+  | two rows `0c9447d` | 309 µs | 531 µs |
+  | **one row `f1a7b35`** | **228 µs** | **361 µs** |
+
+    (The 2-letter input's true answer is far over 2³¹, so it's a timing input, not a valid LeetCode case.) Two rows: 4 MB → 8 KB, out of L2 and into L1, 1001 → 2 allocations. One row: no copy on the 96% of cells that don't match (26 letters). On sparse matches the memo beats the 2-D table: a table fills every state.
+
+* **Time & Space Complexity (final, `f1a7b35`):**
+    * **Time:** **O(n1 · n2)**, one compare per cell, one add per match.
+    * **Space:** **O(n2)**: one row of `n2 + 1` unsigned ints.
