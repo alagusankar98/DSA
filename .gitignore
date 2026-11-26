@@ -70,3 +70,4 @@ Testing/
 resume/pdf/
 temp/
 
+__pycache__/
