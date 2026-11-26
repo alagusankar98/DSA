@@ -1,19 +1,20 @@
 bool isMatchHelper(std::string_view s, std::string_view pattern, int i, int j, const int n1, const int n2) {
     if(j == n2) return (i == n1);
+    // Check if we have an exact character match or if regex pattern is a wild card
+    bool firstMatch = (i < n1) && ((s[i] == pattern[j]) || (pattern[j] == '.'));
 
     if((j + 1) < n2 && pattern[j + 1] == '*') {
         // Consume 0 or more characters of pattern[j] in s
-        // while((i < n1) && (pattern[j] == '.' || s[i] == pattern[j])) i++;
 
         // Either string s ran out or I have a mismatch.
         // Mismatch is fine in case of * since it can consume 0 characters as well
-        // Either way next call should be to (j + 2)
-        return isMatchHelper(s, pattern, i, j + 2, n1, n2) || (i < n1) && (s[i] == pattern[j] || pattern[j] == '.') && isMatchHelper(s, pattern, i + 1, j, n1, n2);
-    } else if(i < n1) {
-        if(s[i] == pattern[j] || pattern[j] == '.') return isMatchHelper(s, pattern, i + 1, j + 1, n1, n2);
+        // Check both skip branch and take branch (consume one character and let next recursion consume next character)
+        // Skip branch : (i, j + 2) to skip pattern and i to let next recursion match ith character  (0 matches, skip '.*' or 'a*')
+        // Take branch : Verify if character matches before consuming it (i + 1, j) indicates one character consumed and retaining pattern for next recursion
+        return isMatchHelper(s, pattern, i, j + 2, n1, n2) || firstMatch && isMatchHelper(s, pattern, i + 1, j, n1, n2);
     }
 
-    return false;
+    return firstMatch && isMatchHelper(s, pattern, i + 1, j + 1, n1, n2);;
 }
 bool isMatch(std::string_view s, std::string_view p) {
     const int n1 = static_cast<int>(s.size());
