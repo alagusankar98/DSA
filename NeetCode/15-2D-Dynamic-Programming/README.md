@@ -80,6 +80,26 @@ If row `i` only reads row `i − 1`, keep two rows, or one row updated in place.
 * **Diagonal** `(i−1, j−1)` is the catch: it was overwritten one step ago. **Save it in a variable before overwriting each cell** (`diag = row[j]` before the write, used by the next `j`). Forgetting this is the classic one-row bug.
 * **Diagonal without left:** if a cell reads only up and the diagonal (no same-row neighbour), you don't need the saved variable: loop so the diagonal's index is visited **after** the cell, keeping it old (Distinct Subsequences `[8]`: suffix framing, `row[j + 1]` is the diagonal, so `j` runs **upward**).
 * **The direction rule in one line:** for each cell you read in place, ask whether it should be the **old** row (visit it later) or the **new** row (visit it first). The same index can need either: `row[j + 1]` was *right* (new) in Interleaving `[6]` and *diagonal* (old) in Distinct Subsequences `[8]`.
+* **Which side of the loop is old (the table version of the rule).** The loop has already written everything **behind** it and nothing **ahead** of it:
+
+  | loop direction | already visited this pass (**new**) | not yet visited (**old**) |
+  |---|---|---|
+  | left → right (`j` upward) | `j − x` | `j + x` |
+  | right → left (`j` downward) | `j + x` | `j − x` |
+
+  Need a read **new**? It must be behind the loop. Need it **old**? It must be ahead. Every one-row version in this topic, checked against it:
+
+  | problem | read | needs | direction | because |
+  |---|---|---|---|---|
+  | Unique Paths `[1]` | `j − 1` (left) | new | → | behind |
+  | Coin Change II `[4]` | `j − coin` | new (reuse the coin) | → | behind |
+  | Target Sum `[5]` (and 1-D Partition) | `j − num` | old (each number once) | ← | ahead |
+  | Interleaving String `[6]` | `j + 1` (right) | new | ← | behind |
+  | Distinct Subsequences `[8]` | `j + 1` (diagonal) | old | → | ahead |
+  | Edit Distance `[9]` | `j + 1` as right **and** diagonal | new **and** old | none | saved `diag` |
+  | Regular Expression Matching `[11]` | `j + 2` (star skip) **and** `j + 1` (diagonal) | new **and** old | none | saved `diag` |
+
+  **The test before rolling any table:** write "old" or "new" next to each read, then check which side of the loop it falls on. All agree → there's a direction. They disagree → two rows, or one row plus a saved variable.
 * **Two rows with `swap`:** every cell of the new row must be written by this row (Partition Stumble 4).
 * **Which axis to keep:** roll along the longer one and keep a row the length of the **shorter** input. O(min(m, n)) space.
 
@@ -121,6 +141,7 @@ Decide on the **last characters** `a[i − 1]`, `b[j − 1]`: match (diagonal), 
 * *Use for:* Interleaving String (`s3`'s index is `i + j`, not a third axis; only the corner is a base case, so the last row and column must be computed; no skip move, `||` of two guarded takes).
 * *Use for:* Distinct Subsequences (counting with `+`: a match keeps the skip; base `j == n2 → 1` before `i == n1 → 0`; one row loops `j` **upward** because the take reads the diagonal).
 * *Use for:* Edit Distance (base = characters left, `(n1 − i) + (n2 − j)`, so the edges are seeded but not constant; mismatch is `1 + min` of replace / delete / insert; one row is the case that needs the saved diagonal, since `row[j + 1]` is both right and diagonal).
+* *Use for:* Regular Expression Matching (the pattern is units: a single char takes exactly one, `x*` zero or more; look **ahead** for the star; the only base is `j == n2 → i == n1`, so row `n1` is computed; star = skip `(i, j + 2)` or match-and-stay `(i + 1, j)`; one row needs the saved diagonal).
 
 ### Pattern 3: Counting Knapsack → count ways to reach a target
 Partition's table, but cells hold counts (`+`) instead of `||`.
@@ -738,3 +759,64 @@ Pick the element (or split point) handled **last** inside `[l, r]`. Its cost the
 * **Time & Space Complexity (final, `66c7ff2`):**
     * **Time:** **O(n³)**: ~n²/2 ranges, up to n candidates each (~n³/6 inner steps). Standard for interval DP.
     * **Space:** **O(n²)**, and it stays there (see above).
+
+### [11] Regular Expression Matching
+
+> Brute force `7d7049d` → `6bb62d9` (readability), memo `65700d6` → `6fe7e10`, 2-D table `b790553`, two rows `314cc96` (final). The wall was the problem statement itself: what a `*` belongs to, and what happens when the string runs out first. Then one bug per form: a greedy `while`, a star branch that fell through, a memo branch that fell through, a missing last row, a loop that never decremented, a mis-bracketed guard, and a stale corner slot. Stopped at two rows on purpose (see the end).
+
+* **The Core Pattern:** two sequences (§2 Pattern 2). **`f(i, j)` = does `s[i..]` match `p[j..]`?** Answer `f(0, 0)`.
+    * **The pattern is a list of units**, read left to right:
+
+      | unit | matches |
+      |---|---|
+      | single char (`a`, or `.` = any) | **exactly one** character |
+      | char + `*` (`a*`, `.*`) | **zero or more** of that char |
+
+    * **`firstMatch`** = there **is** a character, and it equals `p[j]` or `p[j]` is `.`: `i < n1 && (s[i] == p[j] || p[j] == '.')`. Both kinds of unit use exactly this test.
+    * **Star unit** (`p[j + 1] == '*'`): **skip** the pair, `f(i, j + 2)` (zero copies), **or** `firstMatch && f(i + 1, j)` (eat one, **stay** on the pair: it might want more; Coin Change II's unlimited reuse).
+    * **Single unit:** `firstMatch && f(i + 1, j + 1)`.
+    * **Base:** **only** `j == n2`, answer `i == n1`.
+
+* **Stumble 1: the problem statement.** Two misreadings:
+    * **"`.*` → return true."** `"ab"` / `".*c"` is false: `.*` can eat anything, but the `c` after it still has to match. `.*` is just a star whose char is a wildcard. No special case.
+    * **"String runs out → true."** `"a"` / `"ab"` is false (the `b` needs a character), but `"a"` / `"ab*"` is true. When the string runs out, the answer is "can **every remaining unit** take zero?", which means only star units are left: `"ab"` / `"ab.*.*.*"` true, `"abc"` / `"abcs"` false, `"ab"` / `"ab.*."` false. **No special check is needed**: with `j == n2` as the only base, a used-up string is just `i == n1`, single units fail (`firstMatch` needs a character) and star units still have "skip".
+
+* **Stumble 2: looking *back* at the star.** I first handled `*` when I arrived on it, checking `p[j − 1]`. Too late: `"b"` / `"a*b"` failed at `j = 0` (`a` vs `b`, mismatch, false) before reaching the star, and a matching `a` had already been eaten as a plain letter. **A `*` changes the meaning of the char before it, so look ahead**: at `j`, is `p[j + 1] == '*'`? Then `p[j]` and the star are one unit.
+
+* **Stumble 3: the greedy `while` (uncommitted, before `7d7049d`).** My star branch ate every matching character in a loop, then moved past the pair. Smallest failure: **`"a"` / `"a*."`**, want true (`a*` takes zero, `.` takes the `a`); the loop ate the `a` and left `.` with nothing. Also `"aaa"` / `"a*a"`: the star must leave the last `a`. **The star can't know how many to take: that depends on the rest of the pattern.** So branch, don't loop: zero more (skip) `||` one more (stay), and the recursion tries every count. (The same version also let the star branch fall through to the single-unit line, so `"aa"` / `"a*"` came out false: once a branch has called the rest, it returns.)
+
+* **Stumble 4: "one more" without checking the character.** The branching version called `f(i + 1, j)` unguarded: **`"b"` / `"a*"` → true** (`a*` swallowed a `b`), and **`"b"` / `"a*c"` overflowed the stack** (`i` ran past the end forever while `j` sat on the star). Rule: **you consume a character only if it's there and it matches.** That's `firstMatch`, the same test the single unit uses. Naming it once (`6bb62d9`) turned both branches into one line each that reads as the rule.
+
+* **Stumble 5: the memo (`65700d6` → `6fe7e10`).**
+    * **Sizing** `(n1 + 1) × n2`, derived, not guessed: `i` advances only behind `firstMatch`, which needs `i < n1`, so `i ≤ n1`; `j == n2` returns before the lookup, and `j + 2` only happens when `j + 1 < n2`. **Find the largest value each index can reach.**
+    * **The fall-through came back.** To write `dp` in one place, I merged the branches into one `resultFlag`, and the single-unit line ran **after** a failed star branch too, putting `j` **on the `*`** as if it were a character. Right answers only because `s` never contains `*`; with `s = "a*"`, `p = "a*"` it says true. `else` fixed it: **each unit kind computes the result exactly once.**
+
+* **Stumble 6: the table (`b790553`), checklist row 2.** The memo's base is **only** `j == n2`, so only the **last column** is base (`dp[i][n2] = (i == n1)`). **`i == n1` is not a base case**: a used-up string still goes through the body (a star can take zero). My `i` loop started at `n1 − 1`, leaving row `n1` as zeros: **`"a"` / `"a.*"` → false** (`dp[1][1]`, `""` vs `".*"`, should be 1). LCS and Edit Distance had `||` bases (both edges); here it's one-sided, like Interleaving's corner. **Start `i` at `n1`**, and restore the `i < n1` guard the memo had, because row `n1` now reads `s[n1]`.
+    * **Two typos on the way:** a bare `j` instead of `j--` (TLE: the inner loop never moved), and **`(i < n1) && (s[i] == p[j]) || (p[j] == '.')`**, which parses as `(i < n1 && s[i] == p[j]) || p[j] == '.'`. On row `n1`, a `.` then "matched" nothing and read row `n1 + 1` (ASan heap-buffer-overflow on `""` / `"."`). The same `-Wparentheses` warning had fired on the brute force and the memo, harmless there; here it was the bug. **The guard must wrap the whole "does it match" question.**
+
+* **Stumble 7: two rows (`314cc96`).** Slot `[n2]` was set to 1 in **both** buffers up front and never rewritten, so every row after the first inherited "both used up": **`"b"` / `""` → true** (27,746 wrong / 100k). Edit Distance Stumble 3 word for word: **the right-column slot is one reused cell whose value changes per row**, so `current[n2] = (i == n1)` at the start of every row.
+
+* **Why one row needs a saved variable (and why I stopped at two).** I tried one row with `j` upward, reasoning "I read `j + 1` and `j + 2`, both should be unchanged". Half wrong: map each read back to its 2-D cell.
+
+  | read | 2-D cell | row | in one row it must be |
+  |---|---|---|---|
+  | star skip `row[j + 2]` | `dp[i][j + 2]` | **this** row (the skip keeps `i`) | **new** |
+  | star take `row[j]` | `dp[i + 1][j]` | below | old: read before writing, free |
+  | single `row[j + 1]` | `dp[i + 1][j + 1]` | below (diagonal) | **old** |
+
+  Upward keeps `j + 2` old (skip ✗); downward makes `j + 1` new (diagonal ✗). **No direction works**: Edit Distance's situation (see §1 *Which side of the loop is old*). The fuzz's smallest failure, **`"b"` / `"b"` → false**, wasn't even the skip: resetting `row[n2] = (i == n1)` at the row's start destroyed the old corner that `j = n2 − 1` needed as its diagonal, the exact trap [9] warned about. One row would be [9]'s recipe unchanged: downward, save old `row[n2]` as `diag` before resetting it, save `below = row[j]` before each write, `diag = below` after. **Measured equal to two rows** (both ~2.55 ms at 2,000 × 2,000), so it buys nothing but the proof. Stopped.
+
+* **Measured** at `-O2`, per call:
+
+  | version | 20 × 20 random | 20 × 20 adversarial | 2,000 × 2,000 random | 2,000 × 2,000 adversarial |
+  |---|---|---|---|---|
+  | brute force `7d7049d` | – | **25,090 µs** | – | – |
+  | memo `6fe7e10` | **0.25 µs** | 0.90 µs | **555 µs** | 10,470 µs |
+  | 2-D table `b790553` | 0.67 µs | 0.45 µs | 3,150 µs | 3,460 µs |
+  | **two rows `314cc96`** | 0.45 µs | **0.29 µs** | 2,560 µs | **2,970 µs** |
+
+    Adversarial = `"aaa…ab"` vs `"a*a*…a*c"`: every star can take any count, so the brute force tries every way to split the `a`s (25 ms at **length 20**, ~28,000× the memo). **Random patterns fail fast**, and the memo only visits reachable states, so it wins there (5×); when nearly every state is reachable, the table's straight loops win (3.5×). Same lesson as Interleaving: a memo with an early exit beats a table that fills everything, until the input forces it to fill everything.
+
+* **Time & Space Complexity (final, `314cc96`):**
+    * **Time:** **O(n1 · n2)**: one constant-work cell per `(i, j)`.
+    * **Space:** **O(n2)**: two rows of `uint8_t`, `n2 + 1` each.
