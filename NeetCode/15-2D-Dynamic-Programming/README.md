@@ -141,6 +141,7 @@ When moves are forced to be strictly increasing (or otherwise can't cycle), `mem
 ### Pattern 6: Interval DP → `dp[l][r]` from smaller ranges inside
 Pick the element (or split point) handled **last** inside `[l, r]`. Its cost then depends only on the range boundaries, and the two sides become independent subproblems.
 * *Discipline:* "last", not "first": choosing the first element leaves neighbours that change as the range shrinks. Pad the boundaries with neutral values if the problem's edges need them. Outer loop = range length.
+* *Use for:* Burst Balloons (the balloon that bursts **last** in `[l, r]` sees only the walls `l − 1` and `r + 1`, so it is the one that splits the range; `max` across candidates, `+` inside one; `i` downward / `j` upward is as valid as range length; the table can't be rolled).
 
 ### The Non-Negotiable Discipline
 * **Say what each axis means, then what `dp[i][j]` means, in one sentence each.**
@@ -682,3 +683,58 @@ Pick the element (or split point) handled **last** inside `[l, r]`. Its cost the
 * **Time & Space Complexity (final, `79164cd`):**
     * **Time:** **O(n1 · n2)**, one compare and up to three reads per cell.
     * **Space:** **O(min(n1, n2))**: two rows of the shorter length + 1 ints.
+
+### [10] Burst Balloons
+
+> Brute force `bf85c46` (TLE), memo `c9597b1`, 2-D table `66c7ff2`. The wall was entirely the model: four rounds to get from "burst `i` first, its neighbours are `i ± 1`" to "`i` bursts **last**, its neighbours are the walls `start − 1` and `end + 1`". Then three transliteration bugs, all from the memo → table checklist. Recursion to table in under an hour once the model was right.
+
+* **The Core Pattern:** interval DP (§2 Pattern 6), the Matrix Chain Multiplication shape. **`f(start, end)` = the most coins from bursting every balloon in `[start, end]`, given that the balloons at `start − 1` and `end + 1` (the walls) are still standing the whole time.** A wall off the end of the array is the problem's imaginary 1. Answer `f(0, n − 1)`.
+    * **Candidate `i`** = "balloon `i` bursts **last** in this range". Its coins are `wall_left · nums[i] · wall_right`, and before it bursts, `[start, i − 1]` and `[i + 1, end]` burst on their own, with `i` as a wall for both.
+    * **`max` across candidates, `+` inside one:** `best = max(best, coins(i) + f(start, i − 1) + f(i + 1, end))`.
+    * **Base:** empty range (`end < start`) → 0.
+
+* **Stumble 1: "pick the balloon that bursts first" (the famous trap).** My first plan used `i`'s **original** neighbours `i − 1` and `i + 1`, then recursed on the two halves. On `[3, 1, 5]` it answers **23**; the truth is **35**. The coins for the first burst are right. What breaks is everything after: **when a balloon bursts, the gap closes**, and the left half's last balloon slides next to the right half's first. Best real order: burst 1 (3·1·5 = 15), then 3, whose right neighbour is now **5** (1·3·5 = 15), then 5 (1·5·1 = 5). My left call on `{3}` saw "the edge of my range" and assumed "nothing there, use 1": 1·3·1 = 3. And peeking past the range doesn't fix it: whether 3 sees 5 depends on when 5 bursts, which the *other* call decides. **Bursting first couples the two halves.**
+
+* **Why "last" fixes exactly that: `i` is a wall.** If `i` stays standing until everything else in `[start, end]` is gone, the gap at `i` never closes while the halves burst: the left half bursts against `i` and never sees past it, and the same for the right. The halves are genuinely independent. And when `i` finally bursts, everything inside the range is gone, so its neighbours are **whatever stands just outside the range**: `start − 1` and `end + 1`.
+    * **Each call is a range plus two walls that outlive it.** The left child `[start, i − 1]` inherits the parent's left wall and gets `i` as its right wall; the right child gets `i` as its left wall and inherits the parent's right wall. By induction, `start − 1` and `end + 1` are alive for every call. That's why the walls come from `start`/`end` alone and the memo key is just `(start, end)`.
+    * **Winning path on `[3, 1, 5]`**, read bottom-up = the real order:
+
+      | call | walls | winning `i` (bursts last) | coins | + left | + right | best |
+      |---|---|---|---|---|---|---|
+      | `[0, 2]` {3,1,5} | 1, 1 | 5 | 1·5·1 = 5 | `[0,1]` = 30 | 0 | **35** |
+      | `[0, 1]` {3,1} | 1, **5** | 3 | 1·3·5 = 15 | 0 | `[1,1]` = 15 | 30 |
+      | `[1, 1]` {1} | **3**, **5** | 1 | 3·1·5 = 15 | 0 | 0 | 15 |
+
+* **Stumble 2: "how do I pick `i`?" and "how can `i` be last if I compute it first?"**
+    * You don't pick one `i`: the loop **tries every `i`** as a separate plan and keeps the best. The split pair I thought I'd miss (`[start, 1]` + `[2, end]`) is just the `i = 1` iteration, and each half runs its own loop.
+    * **Code order isn't time order.** Nothing is ever removed from the array; each iteration *scores* a plan by adding three numbers, and addition doesn't care which you compute first. Matrix Chain does the same: the cost of the **final** multiplication is written in the same line as the two sub-chains it waits for.
+
+* **Stumble 3: four rounds of code, each fixing one thing.** Smallest failing inputs, from fuzzing against a plain recursive reference:
+    1. **`count += …` and `max(left, right)`: `+` and `max` swapped.** `[1, 5]` → 16, want 10 (it *added* plan A's 10 and plan B's 6). Only one plan happens, so plans compete with `max`; within a plan both halves burst, so their coins add.
+    2. **Neighbours still `i ± 1`, bounded by `start`/`end`** → `[3, 1, 5]` still 23: the range edge treated as the world's edge.
+    3. **Bounds moved to the array (`>= 0`, `< n`), indices still `i ± 1`** → still 23. "I haven't burst `i` yet, so `i − 1` is there" is true when you *choose* `i`, false when it *bursts*: `i − 1` is inside the range and gone by then. In the sub-call `{3, 1}` with right wall 5, "3 last" scored 1·3·**1** (the already-burst 1) instead of 1·3·**5**, so the winning "5 last" plan totalled 13 instead of 35. `i ± 1` equals the walls only when `i` sits at the range's edge, which is why `[1, 5]` passed.
+    4. **`start − 1` and `end + 1`** with array-bound checks → correct. My worry that `start` now had "two meanings" dissolved: `start − 1` **always** means the wall; the only special case is a wall off the array (→ 1), checked against `0` and `n`, never against `start`/`end`. Padding the array with a 1 at each end would remove even that branch.
+
+* **Stumble 4: the table (`66c7ff2`): three bugs, one per checklist row.**
+    * **No cell for `end = −1` (the crash).** The memo's `if(end < start) return 0` ran *before* any array access; the table has no `if`, so `dp[i][k − 1]` at `k = i = 0` read `dp[0][-1]`. UBSan said *"addition of unsigned offset"*: `operator[]` takes `size_t`, so `−1` became 2⁶⁴ − 1. **That's the index, not the values**, so switching the cells to `unsigned` couldn't fix it. Checklist row 1: size the indices to include the base values (guard or shift).
+    * **Empty-range cells started at 1.** Row `n` is never written by the loops, so `dp[n][n − 1]` (the empty right half when `k = n − 1`) kept the 1: `[5]` → 6. Base `return 0` means empty cells hold 0. Checklist row 2.
+    * **`j` ran downward.** `dp[i][j]` reads `dp[i][k − 1]`: **same row, smaller column**, so `j` must go **upward**. `dp[k + 1][j]` is a lower row, so `i` downward was right. `[1, 5]` → 6: `dp[0][1]` read `dp[0][0]` = 0 a step before it was computed as 5. Checklist row 4: the direction comes from where the reads point. Physically: every range needs all its shorter sub-ranges first. The textbook loops over range length; `i` down / `j` up guarantees the same thing.
+    * Cells stay `int`: worst case 300 bursts × 100³ = 3 × 10⁸ < 2³¹, and every `i ≤ j` cell is a real sub-range, so no unreached cell can blow up the way the counting tables did.
+
+* **Why this table can't be rolled.** `dp[k + 1][j]` reads **every** lower row in column `j`, not just the previous one. No row can ever be discarded, so O(n²) space is the floor. First problem in the topic where the full table is the final form.
+
+* **Review leftovers (declined, noted for a reread):** the comment in the loop still says "currently being blast", the *first* wording that cost four rounds; the left-half guard tests `k > 0` (works only because `dp[i][i − 1]` stays 0), where the meaning is `k == i`; `n == 0` reads `dp[0][-1]` (LeetCode guarantees `n ≥ 1`). Padding `nums` fixes the last two at once.
+
+* **Measured** at `-O2`, random values 0–100, best of 15:
+
+  | version | n = 300 | n = 1000 |
+  |---|---|---|
+  | memo `c9597b1` | 11.5 ms | 415 ms |
+  | **2-D table `66c7ff2`** | **2.7 ms** | **107 ms** |
+  | flattened + padded (not committed) | 2.5 ms | 97 ms |
+
+    The table is ~4× the memo (no recursion, no sentinel check). Flattening buys 8–10%; the column walk `dp[k + 1][j]` jumps a row per step, but at n = 300 the table is ~360 KB and sits in L2, so it barely shows. Not worth chasing for an interview.
+
+* **Time & Space Complexity (final, `66c7ff2`):**
+    * **Time:** **O(n³)**: ~n²/2 ranges, up to n candidates each (~n³/6 inner steps). Standard for interval DP.
+    * **Space:** **O(n²)**, and it stays there (see above).
