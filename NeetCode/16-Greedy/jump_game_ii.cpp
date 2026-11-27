@@ -1,18 +1,14 @@
-int jumpHelper(const std::vector<int>& nums, int n, int i, std::vector<int>& dp) {
-    if((i + 1) >= n) return 0;
-
-    if(dp[i] != -1) return dp[i];
-
-    int count = n;
-    for(int j = i; j < (nums[i] + i); j++){
-        count = std::min(1 + jumpHelper(nums, n, j + 1, dp), count);
-    }
-
-    return dp[i] = count;
-}
 int jump(const std::vector<int>& nums) {
     const int n = static_cast<int>(nums.size());
 
-    std::vector<int> dp(n, -1);
-    return jumpHelper(nums, n, 0, dp);
+    std::vector<int> dp(n, n);
+    dp[n - 1] = 0;
+
+    for(int i = n - 1; i >= 0; i--) {
+        int upperBound = std::min(n - 1, nums[i] + i); // Ceiling to last element 'n-1'
+        for(int j = i; j < upperBound; j++){
+            dp[i] = std::min(1 + dp[j + 1], dp[i]);
+        }
+    }
+    return dp[0];
 }
