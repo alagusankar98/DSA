@@ -3,12 +3,12 @@ int jumpHelper(const std::vector<int>& nums, int n, int i, std::vector<int>& dp)
 
     if(dp[i] != -1) return dp[i];
 
-    int count = std::numeric_limits<int>::max();
+    int count = n;
     for(int j = i; j < (nums[i] + i); j++){
-        count = std::min(jumpHelper(nums, n, j + 1, dp), count);
+        count = std::min(1 + jumpHelper(nums, n, j + 1, dp), count);
     }
 
-    return dp[i] = (count == std::numeric_limits<int>::max()) ? std::numeric_limits<int>::max() : (1 + count);
+    return dp[i] = count;
 }
 int jump(const std::vector<int>& nums) {
     const int n = static_cast<int>(nums.size());
