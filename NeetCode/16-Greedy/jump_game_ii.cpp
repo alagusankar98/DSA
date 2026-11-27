@@ -1,14 +1,22 @@
 int jump(const std::vector<int>& nums) {
     const int n = static_cast<int>(nums.size());
 
-    std::vector<int> dp(n, n);
-    dp[n - 1] = 0;
+    int numberOfJumps = 0;
+    int currentFarthestIdx = 0;
+    int consumeIdx = 0;
 
-    for(int i = n - 1; i >= 0; i--) {
-        int upperBound = std::min(n - 1, nums[i] + i); // Ceiling to last element 'n-1'
-        for(int j = i; j < upperBound; j++){
-            dp[i] = std::min(1 + dp[j + 1], dp[i]);
+    while (currentFarthestIdx < (n - 1)) {
+        int nextFarthestIdx = -1;
+        // Consume every node till currentFarthestIdx
+        for(; consumeIdx <= currentFarthestIdx; consumeIdx++) {
+            nextFarthestIdx = std::max(nextFarthestIdx, consumeIdx + nums[consumeIdx]);
         }
+
+        if(currentFarthestIdx == nextFarthestIdx) return -1; // Next group does not reach beyond current group
+
+        currentFarthestIdx = nextFarthestIdx;
+        numberOfJumps++;
     }
-    return dp[0];
+
+    return numberOfJumps;
 }
