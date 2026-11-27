@@ -83,6 +83,7 @@ If the total gain is negative, the answer is impossible. Otherwise, run a balanc
 ### Pattern 4: Sort, Then the Smallest Forces the Decision
 After sorting (or with a min-heap / count map), the smallest remaining item can only play one role, so it decides the next group.
 * *Discipline:* decrement counts and stop as soon as a needed item is missing. Cheap rejections first (the total size must divide evenly).
+* *Use for:* Hand of Straights `[5]`.
 
 ### Pattern 5: Last Occurrence → extend the current window's end
 Precompute where each value appears last. The current piece's end is the max last-occurrence of everything inside it. Cut when the index reaches that end.
@@ -242,3 +243,36 @@ diff: -1 +1 -5 +4 +1      total = 0
 * **Measured, and a retracted guess:** the reset branch is almost never taken (8,505 resets in 10M random stations), so the CPU predicts it correctly. A "branchless" rewrite measured 1.4× faster, but the assembly showed GCC had turned it **back into the same branch**; the gap was just loop layout (one extra register move per iteration). A compiler artifact you can't rely on, so no change. **Lesson: check the assembly before crediting a speed-up to the source change.**
 
 **Complexity:** O(n) time, one pass over two arrays in step. O(1) space.
+
+### [5] Hand of Straights
+**Pattern:** Sort, Then the Smallest Forces the Decision (Pattern 4). **The smallest card left can't be second or later in any group, because nothing smaller is left to come before it. So it has to start a group, and that group (`x, x+1, …, x+groupSize−1`) is fully decided.** Remove it and repeat. Cheap rejection first: `n % groupSize != 0` → false.
+
+**Initial approach: properties, not a decision.** I got the shape right: `n / groupSize` groups, each a run of consecutive values with its own start. Then I tried a series sum per group. **Dead end:** every group's start is free, so the sum constrains almost nothing (`[1,2,3,4]` and `[1,1,4,4]` with groupSize 2 have the same sum; only the first can be split). What was missing was a **forced move**, not a formula. I was also stuck because I assumed it had to be O(n). Once sorting was allowed, the smallest card was right there.
+
+**Version 1: sort + count map (`c030532`).** Count each value once; walk the sorted hand; skip cards whose count is already 0 (earlier groups used them); otherwise the card is the smallest left, so check and decrement the next `groupSize` values. Counting replaces deleting: "take a card" is a decrement, "does `x+1` exist?" is a count check, and the pointer only moves forward (like `consumeIdx` in Jump Game II `[3]`). O(n log n).
+* **Review: the map cost more than the sort.** `reserve` sizes the buckets, but every distinct key is still its **own heap node**, and each `find(x + i)` follows a pointer to somewhere in the heap. Measured at n = 1e6, all-distinct values: 129 ms total against 40 ms for the sort alone. After sorting, equal and consecutive values are already **next to each other**, so a contiguous `(value, count)` array built from the sorted hand answers "does `x+1` exist?" with a neighbour comparison: 43 ms. With heavy duplicates the map stays in cache and the gap almost disappears (2.9 vs 2.5 ms at 1e5), so the cost is node count, not hashing.
+
+**`operator[]` reads insert.** A common snippet checks `if (count[i] == 0) return false;`. If `i` is missing, `[]` **creates** it with value 0 first (verified: `size()` goes 2 → 3). It works here because "missing" and "used up" mean the same thing, and at most one junk entry appears before the `return`. But it's a read that can allocate and trigger a full rehash (which invalidates iterators), it won't compile on a `const` map, and it hides whether the insert was intended. **Use `[]` to insert/update (`count[num]++`), `find`/`contains` to read.**
+
+**Version 2: O(n) with no sort (the follow-up).** For each card with cards left, **walk down** while `x − 1` still has cards, to find the smallest remaining value in its run, then build groups from there. This is where I got lost, three times:
+1. **One group per turn strands cards.** `[5, 5, 4, 3, 2, 1]`, groupSize 2 (answer false, since 5,5 can't pair): the first 5 walks down to 1 and builds `1,2`; the second 5 walks down to 3 and builds `3,4`; the remaining four cards have count 0 and are skipped → **true** ✗. Both 5s' turns were spent on other cards' groups, and no 5 comes up again. **A value's turns in the main loop are its only chance to be checked**, so a turn may not end while `num` still has cards. Fix: after walking down, **climb back up to `num`**, building groups at each value on the way. On this hand the first 5's turn does everything: `1,2`, skip 2, `3,4`, skip 4, then `5,6` → no 6 → false ✓.
+2. **Climbing with an `if` (one group per value) is still wrong.** `[2, 2, 1, 1]`, groupSize 2 (answer true): the first 2 walks down to 1, builds **one** `1,2`, steps up to 2, and builds `2,3` → false ✗. A 1 was still left, and a 1 can only start a group (nothing below it), so it needed that 2. `[1, 1, 2, 2]` passed only because the second 1 got its own turn before anything climbed past it. **Before stepping up from `v`, `v`'s count must be 0**: when the climb is at `v`, everything below is empty, so every remaining `v` is the smallest card left and must start a group *now*. Stepping up early lets `v + 1` start a group with a card a leftover `v` needed. The `if` becomes a `while`.
+3. **A final "anything left over? → false" scan doesn't rescue version 1 of this.** Smallest counterexample: `[1, 0]`, groupSize 1. The 1 walks down and builds `{0}`, the 0 is skipped, the 1 is left over → false, but the answer is true. Leftovers mean nobody checked those cards, not that they can't be grouped.
+* **Also checked:** "repeat the walk down + one group until `num`'s count is 0" is correct but **quadratic**: every repeat walks down the run again. On one run `1…1e5` in descending order it took 2987 ms vs 3.6 ms for walk down once, then climb.
+* **Why it's O(n) expected:** after a turn, everything from the run's start up to `num` is 0, so later walks down stop at the cleared region; each value is walked over and climbed over about once, and each card is decremented once. ("Expected": `std::hash<int>` is the identity in libstdc++, so a hostile input can overload a few buckets.)
+* **The one fix applied after review:** the climb looks up its value **once** with `find` and reuses the iterator, instead of `contains` + `[]` (two hashes). The walk down still hashes twice per step (`contains(x - 1)` then `[x - 1]` search for the same key); the skip check is a single `[]` lookup (safe here, every card is already in the map, but it's the read-that-can-insert habit). Measured, the full single-lookup version is 10–25% faster at n = 1e6 (constant factor). Starting all `c` groups at a value in one pass would save more with heavy duplicates (4.1 → 3.0 ms). Not applied.
+
+**Which version is faster? It depends on how many distinct values there are** (`-O2`, n = 1e6, best of 7):
+
+| input | O(n) hash | sorted + hash (v1) | sorted run-length array |
+| ----- | --------- | ------------------ | ----------------------- |
+| g=3, values 0..1000 (heavy dups) | **5.5 ms** | 29.0 | 24.7 |
+| g=100, spread 1e6 | **30.4** | 66.6 | 42.5 |
+| g=3, all distinct (spread 1e9) | 123.4 | 125.3 | **43.1** |
+| one descending run, g=2 | 25.0 | 23.4 | **6.7** |
+
+Few distinct values: the map fits in cache and skipping the sort wins 5×. Mostly distinct: a million scattered nodes, a cache miss per lookup, and sorting into a contiguous array wins 3×. **Big-O picks the class; the memory layout picks the winner.** That's the interview answer to "why not always use the O(n) one?".
+
+**Edge cases:** `groupSize = 1` → true. `groupSize = 0` → `n % 0` is UB (LeetCode guarantees ≥ 1). `x ± 1` and `x + i` stay within `int` under the constraints (≤ 1e9 + 1e4); unbounded values near `INT_MIN`/`INT_MAX` would overflow.
+
+**Complexity:** sorted: O(n log n) time, O(n) space. Hash walk down / climb: O(n) expected time, O(distinct) space, no copy of the hand.
