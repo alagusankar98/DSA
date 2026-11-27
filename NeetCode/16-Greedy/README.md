@@ -96,6 +96,7 @@ When a symbol can stand for several things, track the lowest and the highest val
 ### Pattern 7: Filter, Then Combine
 Throw away every candidate that would break the target in any coordinate. Everything left is harmless, so combine all of it and check whether each coordinate of the target is reached.
 * *Discipline:* "harmless" must be argued (a candidate that never exceeds the target can only help, since combining takes the max).
+* *Use for:* Merge Triplets to Form Target Triplet `[6]`.
 
 ### The Non-Negotiable Discipline
 * **Write the greedy choice and the invariant as comments before the loop.**
@@ -276,3 +277,25 @@ Few distinct values: the map fits in cache and skipping the sort wins 5×. Mostl
 **Edge cases:** `groupSize = 1` → true. `groupSize = 0` → `n % 0` is UB (LeetCode guarantees ≥ 1). `x ± 1` and `x + i` stay within `int` under the constraints (≤ 1e9 + 1e4); unbounded values near `INT_MIN`/`INT_MAX` would overflow.
 
 **Complexity:** sorted: O(n log n) time, O(n) space. Hash walk down / climb: O(n) expected time, O(distinct) space, no copy of the hand.
+
+### [6] Merge Triplets to Form Target Triplet
+**Pattern:** Filter, Then Combine (Pattern 7). **`max` never goes down**, so a triplet that exceeds the target in *any* coordinate can never be used: merging it poisons that coordinate forever. Every other triplet is **safe**: it can't push anything past the target, and merging more only helps. So filter out the poisoned ones, merge all the safe ones, and check whether each coordinate's target value was hit.
+
+**Initial approach: a running max with a "would the merge fit?" test.** I knew it was a running max. The rule I found: merge the current triplet only if `max(current, triplet) <= target` in all three coordinates. Correct on the first pass (fuzzed against an all-subsets brute force, 200k cases).
+* **My reasoning was slightly off.** I justified it as "a smaller value can grow later, and committing to a big value up front rejects valid ones". The real reason is the poisoned/safe split above: it isn't about timing, a poisoned triplet is unusable whenever you'd merge it.
+* **The `max` in my condition did nothing.** The running values only change through merges that fit, so `currentA <= target[0]` always holds, which makes `max(currentA, t[0]) <= target[0]` exactly `t[0] <= target[0]`. The test is "is *this triplet* safe?" and depends on the triplet alone. Writing it that way states the safety argument directly in the code, instead of hiding it behind a `max`.
+
+**Time spent on C++ questions (answered by measuring):**
+* **Binding a `vector` of size 3 to three names: not possible.** `auto [a, b, c] = triplet;` fails to compile ("3 names provided for structured binding"): structured bindings need the size at compile time, and a `vector`'s size is only known at runtime. It works for `std::array<int, 3>` and for a plain `struct { int a, b, c; }`. LeetCode passes `vector<vector<int>>`, so it would mean a copy, not worth it.
+* **Computing all three maxes up front vs short-circuiting on the first failure: no difference.** 10M triplets, 34% passing: 34.9 / 35.1 ms short-circuit vs 35.9 / 33.7 ms unconditional, which is noise. A `max` on two ints is about one instruction; skipping two of them saves nothing.
+* **What the loop actually waits on is memory.** Every inner `vector<int>` is its own heap allocation, so each triplet is a pointer chase before any comparison runs. That's where the time goes, and the LeetCode signature fixes it. In my own code, three fixed ints belong in `std::array<int, 3>` or a struct, stored contiguously in one vector.
+
+**Review gaps, both fixed (`8910352`):**
+1. **Early exit as soon as the target is reached** (best case O(n) → O(1)). After each merge, if all three running values equal the target, return true. Nothing later can undo it. At n = 1e5, target reachable: 0.362 → 0.001 ms. On a full scan (answer false) the per-merge check costs a little: 0.249 → 0.302 ms. A constant factor, paid only when the answer is no.
+2. **The filter written as the filter:** test the triplet against the target directly.
+* **The final `return` is now `return false;`.** The running values can only reach the target through a merge, and every merge is followed by the check. If the loop ends, the target was never reached.
+* **An equivalent version without `max`:** after filtering, a coordinate reaches its target exactly when some safe triplet has that **exact** value, so three "hit" flags work just as well as three running maxes.
+
+**Edge cases:** no triplets → false (the `INT_MIN` start can't equal a target ≥ 1). All triplets poisoned → false. `triplet[2]` / `target[2]` assume exactly three elements (guaranteed by LeetCode, not checked).
+
+**Complexity:** O(n) time worst case, O(1) best case with the early exit. O(1) space.
