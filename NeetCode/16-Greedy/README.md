@@ -73,7 +73,7 @@ Keep a running total and a best-so-far. When the running total becomes something
 ### Pattern 2: Farthest Reach → a frontier instead of a search
 Track the farthest index reachable from anything seen so far. Feasibility: stop if the current index ever passes the frontier. Fewest moves: count how many times you must extend the frontier (each extension is one BFS level).
 * *Discipline:* the invariant is "everything up to `reach` is reachable". Check the off-by-one at the end (reaching the last index vs passing it) and the single-element input.
-* *Use for:* Jump Game `[2]`.
+* *Use for:* Jump Game `[2]`, Jump Game II `[3]`.
 
 ### Pattern 3: Running Balance on a Circle → total first, then one candidate start
 If the total gain is negative, the answer is impossible. Otherwise, run a balance from a candidate start. When it goes negative at `k`, no start in `[candidate, k]` can work, so the next candidate is `k + 1`.
@@ -156,3 +156,42 @@ Throw away every candidate that would break the target in any coordinate. Everyt
 **Edge cases:** `[0]` → true (already at the end), `[0, 1]` → false, `[2, 0, 0]` → true (reach carries over zeros). With n ≥ 1, the `return true` after the loop is unreachable: reaching index n−1 at all means `farthest ≥ n − 1`, so the early exit fires inside the loop first. No overflow: `i + nums[i]` ≤ 1e4 + 1e5.
 
 **Complexity:** O(n) time worst case, O(1) best case (early exit), O(1) space, one sequential read.
+
+### [3] Jump Game II
+**Pattern:** Farthest Reach, counting moves (Pattern 2). It's **BFS by levels where every level is a contiguous range**: level j = every index reachable in exactly j jumps. Keep the current level as a window, scan it once to find the farthest reach of anything inside it, and that reach is the right end of the next level. Each level costs one jump. Stop when a level's right end is at or past the last index.
+
+**Initial approach: brute force → memo → table, to understand the problem first.** Recursion: from index `i`, try every jump length `1..nums[i]` and take the cheapest, with base case "at or past the last index → 0 jumps". The memo and the bottom-up table followed. All three were correct (fuzzed against an independent BFS), and they set up the greedy.
+* **The sentinel overflowed.** "Unreachable" was first `INT_MAX`, then `1 + INT_MAX` in two places wrapped to `INT_MIN`, which **wins every `min`**, so an impossible path looked like the best one. The recursive version guarded with `== max` before adding. The fix was `n` as the sentinel. A sentinel standing in for infinity has two jobs: **be larger than any real answer** (the worst real answer is n−1 jumps, one index at a time), and **leave room for `+1`** without overflowing.
+* **`[1, 8, 1]` read past the table.** The 8 tried to read `dp[9]`. I fixed it twice: an extra `dp[n]` slot *and* clamping the window with `min(n - 1, i + nums[i])`. With the clamp, `dp[n]` was never read, so the slot was dead code. Either fix alone is enough, and only the clamp is really needed, because a big value would overrun a single padding slot anyway.
+* **The table is O(n · max jump)**, O(n²) at worst. That fits LeetCode's limits, but it's the reason this problem sits in Greedy.
+
+**The wall: "I can't see how this is greedy."** The backward table (jumps **to the end** from `i`) has no pattern: `[2, 3, 1, 1, 4]` → `2 1 2 1 0`. The recurrence is `dp[i] = 1 + min(dp[i+1], …, dp[i + nums[i]])`, "the cheapest landing spot in my window", and since the values are unsorted the minimum can be anywhere, so the inner loop has to scan the whole window. (I first misread the trace as `dp[i+1]` being reused on every step; each step reads a different cell.) **The greedy lives in the forward table** (jumps needed to **reach** `i`):
+
+```
+nums:   2  1  1  3  1  1  1
+f:      0 |1  1 |2 |3  3  3
+level:  L0| L1  |L2| L3
+```
+
+* **Why it's sorted and in blocks:** Jump Game's invariant: if you can reach `k`, you can reach everything before `k` (you can always stop short). So the values never go down left to right, and each value fills one contiguous block. Those blocks are BFS levels, and because each is a range, BFS needs **two indices instead of a queue**.
+* **How the inner loop disappears:** the DP has every index push to *every* target in its window. With levels you only need **one number per level**, the farthest reach of anything in it. Trace on the array above: L0 = [0, 0] reaches 2 → L1 = [1, 2] reaches max(2, 3) = 3 → L2 = [3, 3] reaches 6 ≥ last index → **3 jumps**.
+* **Why greedy is safe:** every index inside one level costs the same number of jumps, so the only thing that separates them is how far they lead. The farthest one beats the rest under any future, the same "the loser can never come back" argument as `[1]` and `[2]`.
+
+**Final version (after reading NeetCode's).** I couldn't build it from the levels picture alone, so I read NeetCode's version and rewrote it my own way. NeetCode keeps the window as `[l, r]` and resets `l = r + 1` by hand after each level. Mine keeps `consumeIdx` **outside** the `while`. The inner `for` leaves it at exactly `currentFarthestIdx + 1`, which is the next level's start, so the reset is automatic:
+
+| NeetCode | mine | meaning |
+| -------- | ---- | ------- |
+| `l` | `consumeIdx` | left end of the current level |
+| `r` | `currentFarthestIdx` | right end of the current level |
+| `farthest` | `nextFarthestIdx` | right end of the next level |
+
+* **Two nested loops, still O(n):** because `consumeIdx` persists, each index is consumed by exactly one level. The inner loop runs n times **in total**, not per level. Whether a nested loop is quadratic depends on whether the inner index restarts, not on the nesting.
+* **The early return lives in the `while` condition:** "is this level's right end already at or past the last index?" is asked before spending another jump. `[0]` → 0 falls out with no special case.
+
+**The review's one gap: unreachable input hung forever.** On `[0, 1]` the next level didn't extend, the following round consumed nothing, `nextFarthestIdx` stayed at its `-1` initialiser, and the window moved *backwards* and never stopped: no crash, just a hung thread. LeetCode guarantees reachability, but "what if it isn't?" is the standard follow-up. Fix: if the next level's end equals the current one, return −1. In BFS terms, the queue emptied before reaching the target. `==` is enough because each level's scan includes `currentFarthestIdx` itself, so the next end can never be *smaller*. Fuzzed on 300k arrays, 120k of them unreachable: all match BFS.
+
+**Measured (`-O2`):**
+* Greedy vs my own DP at n = 1e4, all 1000s: **0.0046 vs 4.9 ms (~1000×)**. That's the algorithmic win.
+* Versus the other common form (one `for` over `i` from 0 to n−2, count a jump when `i` hits the level end; it stops at n−2 because standing on the last index needs no jump), 10M elements: same speed on wide levels (5.1 vs 5.2 ms on all 1000s), but **1.8× slower on all 1s** (9.4 vs 5.2 ms). With one index per level, the `while` check, the reset and the inner loop's start and exit run once per element. On random 1–3 both take ~16 ms, because the CPU can't predict where a level ends. A constant factor that only matters in the worst case, and irrelevant for interviews.
+
+**Complexity:** O(n) time, each index read once. O(1) space. Returns −1 if the end is unreachable.
