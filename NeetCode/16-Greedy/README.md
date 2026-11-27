@@ -68,6 +68,7 @@ That makes greedy the cheapest algorithm there is, and the most dangerous. **It 
 ### Pattern 1: Running Value with a Reset → drop the prefix that can only hurt
 Keep a running total and a best-so-far. When the running total becomes something no future element can benefit from, reset it.
 * *Discipline:* say exactly when a prefix "can only hurt" (a negative sum makes every later sum smaller). Update the best **before or after** the reset deliberately, and check an all-negative input.
+* *Use for:* Maximum Subarray `[1]`.
 
 ### Pattern 2: Farthest Reach → a frontier instead of a search
 Track the farthest index reachable from anything seen so far. Feasibility: stop if the current index ever passes the frontier. Fewest moves: count how many times you must extend the frontier (each extension is one BFS level).
@@ -103,3 +104,35 @@ Throw away every candidate that would break the target in any coordinate. Everyt
 ---
 
 ## 3. Problem Strategies & Patterns
+
+### [1] Maximum Subarray
+**Pattern:** Running Value with a Reset (Pattern 1), i.e. Kadane's algorithm. Keep `sum` = the best sum of a subarray **ending at this index**, and `maxSum` = the best seen anywhere. Before adding the next element, drop the carried sum if it's negative. The whole problem in one line: `best[i] = nums[i] + max(0, best[i-1])`.
+
+**Initial approach: two pointers.** `left` at 0, `right` consuming elements while the sum kept growing. When `right` hit a negative, I tried to decide by comparing `nums[left]` with `nums[right]` and couldn't find a rule. **Why it stalled:** the decision isn't about any single element. It's about the **whole stretch being carried**: does the sum built so far help or hurt the next element? Two endpoint values can't answer that; the running sum can.
+
+**Second approach: one pass, restart when the carry hurts.** Keep a running sum. When it's negative, start fresh at the current element. That's the right idea, but two things came up:
+1. **The best answer got lost.** By the end, `sum` had moved on past the best stretch. The fix was a separate `maxSum` updated on every step. These are two different quantities, "best ending here" and "best overall", the same split as 1-D DP's state vs answer.
+2. **An extra condition that was harmless but blurred the invariant.** The first passing version reset only when `sum < 0 && num > sum`. With `sum = -4`, `num = -6` it did **not** skip the −6. It added it: `sum = -10`, while the true best ending there is −6 alone. It then reset on the first number greater than that inflated sum, which can be another negative (`-7 > -10`), not necessarily a positive:
+
+   | num | reset? | `sum` (first version) | true best ending here | `maxSum` |
+   | --- | ------ | --------------------- | --------------------- | -------- |
+   | −4 | (start) | −4 | −4 | −4 |
+   | −6 | `-6 > -4`? no | **−10** | −6 | −4 |
+   | −7 | `-7 > -10`? yes | −7 | −7 | −4 |
+
+   The answer stayed correct because `sum` is only wrong while the true best-ending-here is a negative number already ≤ `maxSum`, so nothing it misses could ever win. But "correct because of a side argument" means an interviewer asking *"what does `sum` hold?"* doesn't get a one-sentence answer. Deleting `&& num > sum` restored the invariant. As a side effect it was ~25% faster at `-O2` (10M random ints: 7.1 → 5.3 ms), because the two-part data-dependent test compiled to worse code than a single `sum < 0`. That's a constant factor no interview cares about.
+
+**Insight: why greedy works here (and why it's still DP).** I couldn't justify the greedy at first. The justification is that Kadane's **is** the DP, with a choice so simple it collapses to one variable:
+* **Only two options, and they cover every start.** Every subarray ending at `i` is `[j..i]`. Either `j = i` (just `nums[i]`), or `j < i`, which is `nums[i]` plus some subarray ending at `i-1`, and the best of those is `nums[i] + best[i-1]`. So the `max(0, …)` compares **all** possible starts at once. For `[2, -3, 4]`, the candidates ending at 4 are `[4]` = 4, `[-3, 4]` = 1, `[2, -3, 4]` = 3: the best is `4 + max(0, -1)` = 4, with no enumeration.
+* **Why one number per index is enough (the safety argument).** Two candidates ending at `i` with sums 5 and 2: whatever comes next is added to **both equally**, so 5 beats 2 under every possible future. The loser can be thrown away permanently. **Greedy is safe exactly when a discarded choice can never become the better one later.** Coin Change is the contrast: two ways to reach a state differ in what's left, so the future decides and you need the table.
+* **Backpack picture:** the carried sum is a backpack whose weight is added to everything that follows. A negative one makes every future subarray worse by exactly that much, so put it down.
+* This is the same clamp as `max(0, child)` in Binary Tree Maximum Path Sum (`08-Trees/README.md` [14], "Kadane's on a tree"), and the one-variable version of Maximum Product Subarray (`14-1D-Dynamic-Programming/README.md` [9]), which needs two variables because a negative can flip the worst into the best.
+
+**Edge cases:** `maxSum` starts at `INT_MIN`, not 0, so an all-negative array returns its largest element (`[-3]` → −3), the classic trap. Overflow: |sum| ≤ 1e5 × 1e4 = 1e9 fits in `int` under the given constraints. Empty input returns `INT_MIN`; LeetCode guarantees n ≥ 1.
+
+**Follow-ups to have ready (prose):**
+* *Return the indices:* record the start index on each reset and `(start, i)` whenever `maxSum` improves. That's the original two-pointer idea, made workable.
+* *Divide and conquer:* the best lies entirely in the left half, entirely in the right half, or crosses the middle (best suffix of the left + best prefix of the right). O(n log n), worse than Kadane's.
+* *Circular array* (LC 918): `max(Kadane, total − minimum subarray)`, except when everything is negative.
+
+**Complexity:** O(n) time, single sequential pass (prefetch-friendly), O(1) space, no allocations.
