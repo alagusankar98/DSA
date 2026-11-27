@@ -73,6 +73,7 @@ Keep a running total and a best-so-far. When the running total becomes something
 ### Pattern 2: Farthest Reach → a frontier instead of a search
 Track the farthest index reachable from anything seen so far. Feasibility: stop if the current index ever passes the frontier. Fewest moves: count how many times you must extend the frontier (each extension is one BFS level).
 * *Discipline:* the invariant is "everything up to `reach` is reachable". Check the off-by-one at the end (reaching the last index vs passing it) and the single-element input.
+* *Use for:* Jump Game `[2]`.
 
 ### Pattern 3: Running Balance on a Circle → total first, then one candidate start
 If the total gain is negative, the answer is impossible. Otherwise, run a balance from a candidate start. When it goes negative at `k`, no start in `[candidate, k]` can work, so the next candidate is `k + 1`.
@@ -136,3 +137,22 @@ Throw away every candidate that would break the target in any coordinate. Everyt
 * *Circular array* (LC 918): `max(Kadane, total − minimum subarray)`, except when everything is negative.
 
 **Complexity:** O(n) time, single sequential pass (prefetch-friendly), O(1) space, no allocations.
+
+### [2] Jump Game
+**Pattern:** Farthest Reach (Pattern 2). Keep `farthest` = the farthest index reachable from anything seen so far. Walk left to right: if the index you're about to stand on is past `farthest`, you're stuck; otherwise extend `farthest` with `i + nums[i]`. Invariant: **every index ≤ `farthest` is reachable** (you can always stop short).
+
+**Initial approach: a fuel tank, traced on paper.** The "work backwards from the end" explanation I'd read the night before didn't click, so I traced forward instead. `stepsLeft` = fuel: arriving at each index burns one unit (`if (--stepsLeft < 0) return false`), and the start is a "free pass" (`stepsLeft = 1`, because arriving at index 0 also burns one).
+
+**Stumble 1: add or max?** My first instinct was `stepsLeft += nums[i]`. Tracing `[3, 2, 1, 0, 1]` showed it was off: after index 0 I have 3, and after moving to index 1 I should have 2, not 2 + 2 = 4, because **the two tanks cover the same indices**. Standing on index `i` doesn't add `nums[i]` steps; it offers a **fresh tank** of `nums[i]` from here. You keep whichever tank is fuller, so it's `max(nums[i], stepsLeft)`. Adding counts the same stretch of road twice (fake reach). That's also why the greedy is safe, the same argument as Maximum Subarray `[1]`: two tanks starting at the same index differ only in size, so the bigger one is at least as good under every future, and the smaller can be thrown away for good.
+
+**Stumble 2: the early exit with a sign error.** The review asked for a success exit (best case O(n) → O(1): stop once the fuel covers what's left). I wrote `stepsLeft >= i + n - 1`. The distance left is `(n - 1) - i`, which **shrinks** as `i` moves; `i + n - 1` **grows**. On `[3, 1, 5, 0, 0, 0, 0]` the fuel at i = 2 is 5 with 4 indices left (should exit), but the threshold was already 8, so it scanned to the end. **Why fuzzing didn't catch it:** the two expressions are equal at i = 0 and the wrong one is larger after that, so the exit could only fire *late*, never wrongly. The answers stayed right; only the speed-up was missing. **Lesson: a too-strict early exit is invisible to correctness fuzzing.** Test it with an input where the exit should fire in the *middle*, and check that the loop actually stops (here: big value at N/2 → half the time of a full scan). The fix, `stepsLeft + i >= n - 1`, is already in absolute terms: `stepsLeft + i` *is* the farthest reachable index, which led to the final version.
+
+**Stumble 3: the reversed stuck test.** Switching to `farthest`, I first wrote `if (i < farthest) return false`, the opposite of "I'm past the frontier". It returned false exactly when things were going **well** (spare reach ahead) and kept going when I was stuck **exactly at** the frontier: `[2, 3, 1, 1, 4]` → false, `[1, 0, 1]` → true, while `[1, 1, 1, 1]` still passed (`farthest == i` at every step). Found it by debugging. The guard is "the index I'm standing on is beyond what I can reach": `farthest < i`. Say the invariant out loud, then read the comparison back against it.
+
+**Why farthest beats fuel (measured, constant factor only).** Same algorithm, same O(n), but in the fuel version every iteration has to wait for the previous `stepsLeft`, decrement it, then compare and pick the max (decrement → compare → `cmov`, three steps in a row: a *loop-carried dependency chain*). In the farthest version `i + nums[i]` doesn't depend on the previous iteration, so the CPU computes it ahead of time and the chain is just compare → `cmov`. At `-O2` on 10M elements: without early exits, 7.0 vs 3.5 ms (2×); with the early exit in both, 6.95 vs 5.27 ms (1.3×, because the extra exit test per element is common to both). Interviews don't care about this; the clearer invariant matters more, and it's the form Jump Game II builds on (count how many times the frontier has to be extended).
+
+**The backward version (what I read first) is the mirror image:** keep a `goal` starting at the last index, walk right to left, and move `goal` to `i` whenever `i + nums[i] >= goal`. The answer is `goal == 0`. Same greedy, same O(n), with the frontier moving the other way.
+
+**Edge cases:** `[0]` → true (already at the end), `[0, 1]` → false, `[2, 0, 0]` → true (reach carries over zeros). With n ≥ 1, the `return true` after the loop is unreachable: reaching index n−1 at all means `farthest ≥ n − 1`, so the early exit fires inside the loop first. No overflow: `i + nums[i]` ≤ 1e4 + 1e5.
+
+**Complexity:** O(n) time worst case, O(1) best case (early exit), O(1) space, one sequential read.
