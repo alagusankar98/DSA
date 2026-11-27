@@ -78,6 +78,7 @@ Track the farthest index reachable from anything seen so far. Feasibility: stop 
 ### Pattern 3: Running Balance on a Circle → total first, then one candidate start
 If the total gain is negative, the answer is impossible. Otherwise, run a balance from a candidate start. When it goes negative at `k`, no start in `[candidate, k]` can work, so the next candidate is `k + 1`.
 * *Discipline:* prove the skip in one sentence (every start in between arrives at `k` with less fuel, not more). The total check is what makes a single candidate enough.
+* *Use for:* Gas Station `[4]`.
 
 ### Pattern 4: Sort, Then the Smallest Forces the Decision
 After sorting (or with a min-heap / count map), the smallest remaining item can only play one role, so it decides the next group.
@@ -195,3 +196,49 @@ level:  L0| L1  |L2| L3
 * Versus the other common form (one `for` over `i` from 0 to n−2, count a jump when `i` hits the level end; it stops at n−2 because standing on the last index needs no jump), 10M elements: same speed on wide levels (5.1 vs 5.2 ms on all 1000s), but **1.8× slower on all 1s** (9.4 vs 5.2 ms). With one index per level, the `while` check, the reset and the inner loop's start and exit run once per element. On random 1–3 both take ~16 ms, because the CPU can't predict where a level ends. A constant factor that only matters in the worst case, and irrelevant for interviews.
 
 **Complexity:** O(n) time, each index read once. O(1) space. Returns −1 if the end is unreachable.
+
+### [4] Gas Station
+**Pattern:** Running Balance on a Circle (Pattern 3). Everything reduces to one array, `diff[i] = gas[i] - cost[i]`. If `sum(diff) < 0`, no start works. Otherwise keep a running tank from a candidate start; when it goes negative, the next candidate is the **next** station, with an empty tank. The last candidate standing is the answer. It's Maximum Subarray's `[1]` reset, reused: a negative carry is baggage, so drop it.
+
+**Initial approach: the total check was right, the start rule wasn't.** I got to `diff` and to "total < 0 → −1" on my own. Then from a few cases I guessed **"the start is the first positive `diff` right after a negative one"**. It's wrong. Counterexample, brute-forced from every start:
+
+```
+gas:   1  2  0  4  1
+cost:  2  1  5  0  0
+diff: -1 +1 -5 +4 +1      total = 0
+```
+
+| start | tank after each station | result |
+| ----- | ----------------------- | ------ |
+| 0 | −1 | stuck |
+| **1** ← my rule | 1, **−4** | stuck leaving 2 |
+| 2 | −5 | stuck |
+| **3** | 4, 5, 4, 5, 0 | ✅ |
+| 4 | 1, 0, 1, −4 | stuck leaving 2 |
+
+**Why it failed:** a positive `diff` is a profit at **one** station. Index 1's +1 is wiped out by the −5 right after it. Whether a start works depends on the **running total from that start**, not on the sign of one station or its neighbour.
+
+**The unlock: what does a failure rule out?** Start at `s`, run dry leaving `k`. Every station between `s` and `k` was *arrived at* with a tank ≥ 0, which beats starting there empty, and even with that head start you ran dry at `k`. So **all of them are dead too**, and the next candidate is `k + 1`. That's why the loop never goes back: each station is checked once, O(n).
+
+**My confusion after it passed: "how does resetting converge on *the* station that circles back?"** Two halves.
+* **Every skipped station really is dead** (the argument above).
+* **The last survivor makes it around.** From the final candidate to the end, the tank never goes negative (otherwise there'd have been another reset). Then you wrap through the failed blocks at the front. On the example: blocks `[-1] | [+1 -5] | [+4 +1]`, survivor 3 ends with +5:
+
+  | at | tank | still ahead before you're back at 3 |
+  | -- | ---- | ----------------------------------- |
+  | end of survivor | 5 | −1, +1, −5 (sum −5) |
+  | 0 | 4 | +1, −5 (sum −4) |
+  | 1 | 5 | −5 |
+  | 2 | **0** | nothing ✅ |
+
+  What's still ahead is always a loss, because a failed block stays ≥ 0 until its very last step pulls it below zero, so any leftover piece of it is negative. Hence **tank = total − (what's still ahead) ≥ total ≥ 0**, which means you never get stuck, and the total check is the only extra test needed.
+* **About "only":** the algorithm finds *a* start that works, and proves one exists whenever total ≥ 0. Uniqueness is LeetCode's promise, not something the algorithm proves: `gas = [1,1], cost = [1,1]` works from both stations. In 300k random fuzz cases only ~55k had a single answer; the code was right on all of them.
+
+**"Why does `validIdx` start at 0?"** It isn't a base case. It's the **first candidate**, assumed until proven dead. If the tank never goes negative (`+2 -1 -1`), nothing was ruled out and 0 is the answer. If total < 0, its value doesn't matter.
+
+**The other common explanation (same algorithm):** the answer is the station just after the point where the **running total from station 0 is at its lowest**. Start right after the worst point and every partial sum from there is ≥ that low point. The resets land at the same place.
+
+**Review outcome:** O(n) / O(1), nothing algorithmic left. Small fixes made: `std::` on the `cost` parameter (it only compiled thanks to LeetCode's `using namespace std`), and an `assert` that the two arrays have the same size, because `n` comes from `cost` and a shorter `gas` would be a silent out-of-bounds read. (`assert` disappears in `-DNDEBUG` builds; for a hard guarantee in release builds, check and return an error.) No overflow under the constraints (|total| ≤ 1e5 × 1e4 = 1e9); unbounded inputs would need `long long`.
+* **Measured, and a retracted guess:** the reset branch is almost never taken (8,505 resets in 10M random stations), so the CPU predicts it correctly. A "branchless" rewrite measured 1.4× faster, but the assembly showed GCC had turned it **back into the same branch**; the gap was just loop layout (one extra register move per iteration). A compiler artifact you can't rely on, so no change. **Lesson: check the assembly before crediting a speed-up to the source change.**
+
+**Complexity:** O(n) time, one pass over two arrays in step. O(1) space.

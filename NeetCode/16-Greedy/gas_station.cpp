@@ -1,4 +1,5 @@
-int canCompleteCircuit(const std::vector<int>& gas, const vector<int>& cost) {
+int canCompleteCircuit(const std::vector<int>& gas, const std::vector<int>& cost) {
+    assert(cost.size() == gas.size());
     const int n = static_cast<int>(cost.size());
     int sum = 0;
     int totalSum = 0;
