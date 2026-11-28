@@ -75,6 +75,7 @@ There's no clever search to find. **The difficulty is precision:** off-by-one on
 
 ### Pattern 1: Rotate = Transpose + Reflect → or four-way swaps per layer
 A 90° clockwise rotation sends `(r, c)` to `(c, n − 1 − r)`. Two passes do it: transpose (swap across the diagonal), then reverse every row. Counter-clockwise is transpose, then reverse the row order. In one pass, rotate each layer by moving four cells at a time through one temporary.
+* *Use for:* Rotate Image.
 * *Discipline:* write the mapping and check it on a 3×3 by hand. Transpose only the upper triangle (`c > r`), or every pair is swapped twice and nothing changes. For layers, get the loop bounds for `n` odd and even.
 
 ### Pattern 2: Boundary Pointers → walk a side, then move it in
@@ -115,3 +116,25 @@ Store every added point with its count. For a query point, loop over stored poin
 ---
 
 ## 3. Problem Strategies & Patterns
+
+### [1] Rotate Image
+* **The Core Pattern:** two reflections make a rotation (§2 Pattern 1). Flip the row order (top ↔ bottom), then transpose. `(r, c)` → flip → `(n − 1 − r, c)` → transpose → `(c, n − 1 − r)`, which is exactly the 90° clockwise mapping. The order matters: transpose first, then the flip has to be **within** each row (reverse every row) instead. Both give the same result; pick one and check it on a 3×3.
+* **The "Gotcha":** **a transpose is its own inverse.** Run it over the whole grid and every off-diagonal pair is swapped twice, which undoes it. Trace the pair `(0,1)` / `(1,0)` on the flipped 3×3, where they hold `8` and `4`:
+
+  | cell visited | after the swap: `m[0][1]` | `m[1][0]` |
+  |---|---|---|
+  | start | 8 | 4 |
+  | `(0, 1)`: upper triangle | 4 | 8 ✓ |
+  | `(1, 0)`: lower triangle | 8 | 4 ✗ undone |
+
+  The output was just the row-flipped matrix (`7 8 9 / 4 5 6 / 1 2 3`), as if the transpose never ran. The rule: **each pair is swapped exactly once**, so walk only the strict upper triangle (`j` from `i + 1`). The row flip already obeyed it, which is why it stops at `n / 2`. The transpose needs the same "half the space" bound, as a triangle instead of the top half.
+* **The Struggle & Insights:**
+    * **This was a repeat.** The same double-swap had bitten before, and §2's Discipline already warned about it, written before this solve. Knowing the rule wasn't enough; the check that catches it is mechanical: for any in-place pairwise swap, **count how many times each pair gets visited. It must be once.**
+    * **First fix overshot by the diagonal.** Changing the loop to start at `j = i` made it correct, but every `(i, i)` was then swapped with itself: n useless swaps. The diagonal is the mirror line, so it doesn't belong to either triangle. `j = i + 1` states the intent.
+    * **Swap the rows, not their elements.** `vector<vector<int>>` is an array of `vector` headers (pointer, size, capacity), each pointing at its own heap block. The first version swapped two rows element by element, which copies n ints each way. `std::swap(matrix[i], matrix[n − 1 − i])` swaps two 24-byte headers instead, so the flip drops from O(n²) data movement to O(n). Measured at `-O2`, together with the `j = i + 1` change: 0.11 → 0.06 µs at n = 20, 1431 → 1118 µs at n = 2000. A constant factor (the transpose is still O(n²)), but it shows you know what the outer vector actually holds.
+    * **Cache, said in one sentence:** `matrix[j][i]` walks down a column, so each access lands in a different heap block. At n ≤ 20 the whole matrix (1.6 KB) sits in L1 and it doesn't matter. At large n, this access pattern is why real transposes are done in tiles.
+    * **The follow-up to know:** "Can you do it without the transpose?" Rotate layer by layer. For each ring and each offset along it, cycle four cells (top → right → bottom → left) through one temporary. Every cell is written once, in a single pass: same O(n²) / O(1), so not an algorithmic win, but the index arithmetic is where people slip. Dry-run it on a 4×4 before an interview.
+    * **Still open (left as is):** the code keeps separate `rows` and `columns`. `matrix[j][i]` is only in bounds because the matrix is square, so a single `n` would make that invariant visible.
+* **Time & Space Complexity:**
+    * **Time O(n²):** the flip is n/2 header swaps; the transpose is n(n − 1)/2 element swaps. Every cell must move, so this is optimal.
+    * **Space O(1):** in place.
