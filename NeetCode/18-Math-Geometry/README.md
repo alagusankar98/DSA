@@ -110,6 +110,7 @@ For long multiplication, digit `i` of the first number times digit `j` of the se
 
 ### Pattern 8: Count Map of Points → fix one corner, look up the rest
 Store every added point with its count. For a query point, loop over stored points that could be the **opposite** corner (axis-aligned: different x **and** `|dx| == |dy|`), then look up the two remaining corners and multiply all three counts.
+* *Use for:* Detect Squares.
 * *Discipline:* reject the zero-area case (`dx == 0`). Multiply counts instead of adding 1, since duplicate points make distinct shapes.
 
 ### The Non-Negotiable Discipline
@@ -270,3 +271,27 @@ Store every added point with its count. For a query point, loop over stored poin
 * **Time & Space Complexity:**
     * **Time O(m·n):** one multiply-add per digit pair, plus O(m + n) for the carry pass and conversion.
     * **Space O(m + n):** the buffer and the output. One allocation each, against 2–3 per digit in the string version.
+
+### [8] Detect Squares
+* **The Core Pattern:** a count map of points (§2 Pattern 8), queried by **fixing one corner and looking up the rest**. Every axis-aligned square with a corner at the query Q = (x1, y1) has exactly one other corner **directly above or below Q**, at (x1, y2). That vertical side fixes the side length `side = |y2 − y1|`, and the square can only hang to the **right** (x1 + side) or the **left** (x1 − side) of it. **Only the x changes:** the two missing corners keep Q's and the column point's y values, (x ± side, y1) and (x ± side, y2). The number of squares is the product of the three corners' counts. Store the counts as x → (y → count), so the query's column is one lookup away.
+* **The "Gotcha":** **"can Q be the corner of four squares at once?"** Yes, and the column walk finds all four. For a given size, the point **above** Q gives the two squares above it (slid right and left), and the point **below** gives the two below. Up or down, times right or left: 4. Picture Q as a nail. Any square with a corner on it has one vertical edge running through the nail, going up or down, and the square hangs off that edge to the right or the left. Traced on Q = (2,2) with (2,4), (2,0), (4,2), (4,4), (0,2) and (0,0) stored:
+
+  | column point | side | slide to x = | look for | square? |
+  |---|---|---|---|---|
+  | (2,4) | 2 | 4 | (4,2), (4,4) | **yes** |
+  | (2,4) | 2 | 0 | (0,2), (0,4) | no |
+  | (2,0) | 2 | 4 | (4,2), (4,0) | no |
+  | (2,0) | 2 | 0 | (0,2), (0,0) | **yes** |
+
+* **The Struggle & Insights:**
+    * **First pass (`596eed2`): find the opposite corner.** Walk every stored point; if it's on a diagonal from Q, look up the other two corners. Right idea, and three bugs on the way to it:
+        1. **The test was inverted** (`!=` under a comment saying "diagonals match"), so the one point that *was* the opposite corner got skipped. LeetCode's example returned `0 0 0`.
+        2. **Zero size counts too** once the test is `==`: Q itself has |dx| = |dy| = 0, and its "other corners" are itself. Require dx ≠ 0.
+        3. **Duplicates multiply; they don't add.** First only the opposite corner's count was added; then the rewrite multiplied the two side corners but **dropped the opposite corner's count**. LeetCode's example duplicates a side corner, so it passed. Duplicating the *opposite* corner (two (0,0), one (0,1), one (1,0), query (1,1): 2 squares) broke it.
+    * **"I don't know anything about the sides."** The column idea didn't land as a formula. What made it land: running the loop by hand on real points (the table above), then the nail picture. The rewrite's one remaining bug: **`if (side == 0) return 0;` instead of `continue`.** Reaching the query's own entry in its column exited `count` and threw away every square, found or not. The inner map is an `unordered_map`, so the query's own y can come before or after the real squares; either way they were lost. 281 of 20,000 random sequences failed. The editor not saving cost one extra round.
+    * **Final (`91c04bb`):** a `const` helper, "count at (x, y1) and (x, y2), times the column point's count, or 0", with **one `find` per corner** instead of `contains` + `at`, so each side is one line. Inputs by `const&` instead of a by-value `vector` copy (a heap allocation on every call). `const` restored on `count`, the helper `private`, and the unused alias and empty constructor removed. A rename to `CountSquares` along the way would have failed to compile on LeetCode.
+    * **Overflow bound to say out loud:** at most 3000 calls, so three counts sum to ≤ 3000 and the largest product is 1000³ = 10⁹, which fits in `int`. A product of three counts is the classic place for an overflow to hide.
+    * **Measured at `-O2`** (identical answers): full scan 7.5 ms → column walk **0.13 ms** at LeetCode size; 11.7 s → **53 ms** at 100k adds + 10k counts. A flat 1001 × 1001 count grid, possible because the coordinates are bounded to 0..1000, would be another 2–7× (0.05 ms / 5.6 ms) by removing the hashing. That's the systems point to *mention*, not to write.
+* **Time & Space Complexity:**
+    * **`add`: O(1) average.** **`count`: O(k)** for the k distinct y values in Q's column, with up to 6 hash lookups each. The full scan was O(N log N).
+    * **Space O(N)** for N distinct points.
