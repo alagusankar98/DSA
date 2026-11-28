@@ -85,6 +85,7 @@ Keep `top`, `bottom`, `left`, `right`. Walk the top row and move `top` down; the
 
 ### Pattern 3: Record First, Change Later → markers inside the grid
 When a cell's value decides a change to its whole row and column, decide everything before changing anything. O(m + n) space: two flag arrays. O(1): use row 0 and column 0 as the flags, plus one variable for whether row 0 (or column 0) itself needs clearing, because cell `(0, 0)` can only hold one of the two flags.
+* *Use for:* Set Matrix Zeroes.
 * *Discipline:* apply the changes to the inner cells first and the marker row/column **last**, or you erase your own markers.
 
 ### Pattern 4: Repeated Function → detect the cycle
@@ -165,3 +166,19 @@ Store every added point with its count. For a query point, loop over stored poin
 * **Time & Space Complexity:**
     * **Time O(m·n):** every cell is output once. The boundary version spends O(1) per side on checks, not per cell.
     * **Space O(1) extra** for the boundary version, not counting the O(m·n) output. The simulations were O(m·n) extra (`seen`), or O(1) by writing over the input.
+
+### [3] Set Matrix Zeroes
+* **The Core Pattern:** record first, change later (§2 Pattern 3). A zero you write must never be mistaken for an original zero, or it cascades and wipes out the whole matrix. What needs recording isn't *which cells* are zero but *which rows and columns die*: m + n facts. Store them in two flag arrays (O(m + n) space), or inside the matrix itself, using row 0 for column flags and column 0 for row flags (O(1) space).
+* **The "Gotcha":** **in the O(1) version, row 0 and column 0 have two jobs: they store the markers, and they're also real cells that may need zeroing.** The first attempt marked and applied only the inner cells (`i, j ≥ 1`), so nothing ever zeroed row 0 or column 0 themselves. Smallest failure: `[[2, 0]]` should become `[[0, 0]]` but came back unchanged. With one row, the loops from 1 never run, so the 0 that says "row 0 dies" is never acted on. That broke 120,627 of 200,000 random cases. The fix is about **timing**:
+    1. **Before marking:** record whether row 0 and column 0 originally contain a zero, in two bools. After marking they hold markers, and the original information is gone.
+    2. **Mark and apply to the inner cells.**
+    3. **Last:** zero row 0 and/or column 0 from the two bools. They had to stay intact until step 2 finished reading them.
+* **The Struggle & Insights:**
+    * **Brute force: a list of `(r, c)` for every zero, then zero each one's row and column.** Correct from the start, and the record-first rule was there without being told. But a row with k zeros was zeroed k times. All-zeros 200×200 meant 40,000 zeros × 400 writes = **16 million writes to set 40,000 cells**. `reserve(rows * cols)` also allocated 320 KB up front even with no zeros.
+    * **Second try: split the pairs into a row list and a column list.** That still pushed one entry *per zero*, so `[[0, 0, 0], [1, 1, 1]]` gave the row list `[0, 0, 0]` and row 0 was zeroed three times. Measured: 1838 µs all-zeros, no better than the brute force. **An index you set can't repeat; a list you append to can.** Flags indexed by row and column number make duplicates disappear by themselves.
+    * **Flag arrays (`2782854`):** the expected interview answer. Every cell is checked once and written at most once: all-zeros **1.8 ms → about 25 µs**. These were `std::vector<bool>` flags: bit-packed, written through a proxy with a read-modify-write on a word, a C++ special case worth knowing. Swapping to `vector<char>` was inside the noise at m + n flags.
+    * **O(1) space (`1344588`):** coded after the walkthrough above, on a tired brain. I used **two bools instead of the usual trick** of one variable plus cell `(0,0)`. Cell `(0,0)` sits in both row 0 and column 0, so it can hold only one flag, and the one-variable version is the confusing part of the textbook answer. Two bools are the same O(1) and remove the trap entirely.
+    * **When "better" is slower:** with no zeros, the brute force wins (about 14 vs 21–25 µs) because it makes one pass and the others make two. The worst case decides the interview.
+* **Time & Space Complexity:**
+    * **Time O(m·n):** a scan of row 0 and column 0, one marking pass, one apply pass, two final sweeps. The brute force was O(m·n + z·(m + n)), so O(m·n·(m + n)) worst case.
+    * **Space O(1) extra:** two bools. Flag arrays: O(m + n). Brute force: O(z), allocated as O(m·n).
