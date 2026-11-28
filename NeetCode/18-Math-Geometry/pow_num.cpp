@@ -6,8 +6,13 @@ double myPow(double x, int n) {
     cycles = std::abs(cycles);
     double result = 1;
 
-    for(long long i = 0; i < cycles; i++) {
-        result *= (x);
+    while(cycles > 0) {
+        if(cycles & 1) {
+            // Include current (x ^ ) to result
+            result *= x;
+        }
+        x = (x * x); // x^2, x^4, x^8, x^16....
+        cycles /= 2;
     }
     return isNegative ? (1 / result) : result;
 }
