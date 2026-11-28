@@ -105,6 +105,7 @@ While `n > 0`: if `n` is odd, multiply the result by the base; square the base; 
 
 ### Pattern 7: Digit Positions → `i + j` and `i + j + 1`
 For long multiplication, digit `i` of the first number times digit `j` of the second contributes to result positions `i + j` (the carry) and `i + j + 1` (the digit). Use an `int` array of size `m + n`, accumulate all products, then carry once from right to left.
+* *Use for:* Multiply Strings.
 * *Discipline:* strip leading zeros at the end, and short-circuit when either input is `"0"`.
 
 ### Pattern 8: Count Map of Points → fix one corner, look up the rest
@@ -247,3 +248,25 @@ Store every added point with its count. For a query point, loop over stored poin
 * **Time & Space Complexity:**
     * **Time O(log |n|):** at most 32 iterations for any `int`.
     * **Space O(1).**
+
+### [7] Multiply Strings
+* **The Core Pattern:** long multiplication **without carrying until the end** (§2 Pattern 7). One `int` cell per column, m + n cells (an m-digit times an n-digit number has at most m + n digits). Every digit pair drops its product **whole** into its column, then one right-to-left pass carries. On 23 × 45:
+
+  | product | i (in "23") | j (in "45") | cell `i + j + 1` |
+  |---|---|---|---|
+  | 3 × 5 = 15 | 1 | 1 | 3 (units) |
+  | 3 × 4 = 12 | 1 | 0 | 2 (tens) |
+  | 2 × 5 = 10 | 0 | 1 | 2 (tens) |
+  | 2 × 4 = 8 | 0 | 0 | 1 (hundreds) |
+
+  The cells are `[0, 8, 22, 15]`. Carrying right to left gives 15 → 5 with 1 carried, 23 → 3 with 2 carried, 10 → 0 with 1 carried, so `[1, 0, 3, 5]` = **1035**. **Why `i + j + 1`:** index 0 is the *leftmost* digit, so units × units (the two last indices) goes to the last cell, and moving one digit left in either number moves the product one column left. The `+ 1` keeps cell 0 free for the final carry.
+* **The "Gotcha":** **a zero is "leading" only if everything to its left is zero, so you can't decide it while walking from the right.** The first buffer version carried and converted in one right-to-left loop, and stopped at the first `sum == 0 && carry == 0`. On `2 × 5` the cells are `[1, 0]`: the loop hit the units 0 of **10** first and returned `""`. `101 × 1` lost its middle zero and returned `"1"`. That was 24,861 of the 90,601 pairs in 0..300 × 0..300. The fix separates the jobs: carry right to left **in the vector**, then convert left to right from the first non-zero cell. Because the carry pass walks right to left, the last non-zero cell it sees is the leftmost one, so `firstNonZeroIdx` falls out of the same loop without a second scan. The early `"0"` return guarantees there is one, so the string is never empty.
+* **The Struggle & Insights:**
+    * **First pass (`da94012`): Horner on strings.** For each digit of the shorter number: result = result × 10 (a `push_back('0')`) + num1 × digit, through `multiplyDigit` and `add` helpers. Correct, and already O(m·n). But: 2–3 heap allocations per digit, two `std::reverse` calls per iteration, and an `add` pass over a result that kept growing. `"0"` worked through a chain of accidents (`""` from `multiplyDigit`, then `"0" + ""`), not through a stated rule. **161 µs at 200 × 200 digits.**
+    * **The buffer idea didn't land at first** ("I can't comprehend item 1"). What made it land: long multiplication on paper, **writing each product whole and not carrying yet**, then one carry pass over the column totals. The buffer is just those columns.
+    * **"If I split 81 into 8 and 1, can't the cells overflow?"** Cells going above 9 isn't overflow: they're `int`s, not digits, until the carry pass. The tens column of 23 × 45 held 22. A cell collects at most min(m, n) products of ≤ 81: about 16,200 at 200 digits, against `int`'s 2.1 billion. Real `int` overflow would need numbers with about 24 million digits.
+    * **Split vs whole:** splitting each product into `% 10` into `i + j + 1` and `/ 10` into `i + j` while accumulating is correct, because the carry pass fixes everything anyway. But it does work in the m·n inner loop that the carry pass already does once per cell. **Left as is:** the split costs a measured 2× (29–31 µs vs 13.8 µs at 200 × 200; 2.7–3.0 ms vs 1.21 ms at 2000 × 2000). Replacing it with `cell[i + j + 1] += product` was tested, with the same results. A constant factor, but the version to write next time.
+    * **Optimal (`8db58d5`):** no recursion for the operand swap (both loops cover every pair either way), commented-out code gone, `static_cast<char>` for the digit conversion. 90,601 exhaustive pairs plus 100,000 random pairs up to 25 digits clean, with sanitizers.
+* **Time & Space Complexity:**
+    * **Time O(m·n):** one multiply-add per digit pair, plus O(m + n) for the carry pass and conversion.
+    * **Space O(m + n):** the buffer and the output. One allocation each, against 2–3 per digit in the string version.
