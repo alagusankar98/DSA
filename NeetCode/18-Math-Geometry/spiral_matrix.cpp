@@ -1,28 +1,34 @@
-std::vector<int> spiralOrder(std::vector<std::vector<int>>& matrix) {
-    static constexpr std::array<std::pair<int, int>, 4> directionArray = {{{0, 1}, {1, 0}, {0, -1}, {-1, 0}}};
-    int directionArrayIdx = 0;
-    int rowIdx = 0;
-    int colIdx = 0;
-    int rows = static_cast<int>(matrix.size());
-    int cols = static_cast<int>(matrix[0].size());
+std::vector<int> spiralOrder(const std::vector<std::vector<int>>& matrix) {
+    const int rows = static_cast<int>(matrix.size());
+    const int cols = static_cast<int>(matrix[0].size());
     const int n = rows * cols;
     std::vector<int> spiralVector;
     spiralVector.reserve(n);
-    std::vector<uint8_t> seen(n, 0);
+    int top = 0;
+    int bottom = rows - 1;
+    int left = 0;
+    int right = cols - 1;
 
-    for(int i = 0; i < n; i++) {
-        spiralVector.push_back(matrix[rowIdx][colIdx]);
-        seen[rowIdx * cols + colIdx] = 1;
-
-        int nextRowIdx = rowIdx + directionArray[directionArrayIdx].first;
-        int nextColIdx = colIdx + directionArray[directionArrayIdx].second;
-
-        if(nextRowIdx < 0 || nextRowIdx >= rows || nextColIdx < 0 || nextColIdx >= cols || seen[nextRowIdx * cols + nextColIdx]) {
-            directionArrayIdx = (directionArrayIdx + 1) % 4;
+    while(static_cast<int>(spiralVector.size()) < n) {
+        for(int j = left; j <= right && top <= bottom; j++) {
+            spiralVector.push_back(matrix[top][j]);
         }
+        top++;
 
-        rowIdx = rowIdx + directionArray[directionArrayIdx].first;
-        colIdx = colIdx + directionArray[directionArrayIdx].second;
+        for(int i = top; i <= bottom && right >= left; i++) {
+            spiralVector.push_back(matrix[i][right]);
+        }
+        right--;
+
+        for(int j = right; j >= left && top <= bottom; j--) {
+            spiralVector.push_back(matrix[bottom][j]);
+        }
+        bottom--;
+
+        for(int i = bottom; i >= top && left <= right; i--) {
+            spiralVector.push_back(matrix[i][left]);
+        }
+        left++;
     }
 
     return spiralVector;
