@@ -93,6 +93,7 @@ Precompute where each value appears last. The current piece's end is the max las
 ### Pattern 6: Range of Possibilities → `[lo, hi]` instead of branching
 When a symbol can stand for several things, track the lowest and the highest value the running state could have. Fail when even `hi` is invalid; clamp `lo` so it never goes below what's legal; succeed if `lo` can reach the target at the end.
 * *Discipline:* this replaces an exponential branch with two numbers. Check it against the brute force, because the clamp is where the bugs live.
+* *Use for:* Valid Parenthesis String `[8]`.
 
 ### Pattern 7: Filter, Then Combine
 Throw away every candidate that would break the target in any coordinate. Everything left is harmless, so combine all of it and check whether each coordinate of the target is reached.
@@ -320,3 +321,42 @@ Few distinct values: the map fits in cache and skipping the sort wins 5×. Mostl
 **Edge cases:** empty string → `{}`; one letter → `{1}`; all distinct → all 1s; first letter equals last letter → one piece. Lowercase-only is assumed by the 26-slot table (LeetCode guarantees it; any byte would need 256 slots).
 
 **Complexity:** O(n) time (two passes), O(1) space (26 ints plus at most 26 results).
+
+### [8] Valid Parenthesis String
+**Pattern:** Range of Possibilities → `[lo, hi]` instead of branching (Pattern 6). Track the **smallest and largest number of unclosed `(`** that some choice of stars could leave. `(` → both +1; `)` → both −1; `*` → `lo − 1`, `hi + 1`. If `hi < 0`, fail. Clamp `lo` at 0. At the end, valid iff `lo == 0`.
+
+**Where I was: completely lost, even after the editorial.** The `lo`/`hi` code looked like magic, with no idea what the two numbers *were*. What fixed it was building up in three steps from what I already knew:
+1. **No stars:** one counter of unclosed `(`. `)` with nothing open → invalid; the end must be 0. (`"(()"` → 1, 2, 1 ✗; `"())"` → 1, 0, −1 ✗.)
+2. **A star splits the count into a set of possibilities.** Start from `{0}`. `(` adds 1 to every possibility, `)` subtracts 1, and `*` turns each one into three (−1, +0, +1). **Any possibility below 0 is dropped**: that choice put a `)` where nothing was open, so it's dead. Valid iff 0 is in the final set.
+
+   | `"(*))"` | possible counts |
+   | -------- | --------------- |
+   | start | {0} |
+   | `(` | {1} |
+   | `*` | {0, 1, 2} |
+   | `)` | {0, 1} (the 0 would become −1: dropped) |
+   | `)` | {0} → **valid** (the star was `(`) |
+3. **The set never has gaps.** Each step shifts the block by ±1 or widens it by one on each side; dropping negatives trims only the bottom. So the set is exactly `[lo, hi]`, two integers instead of a set, and **"clamp `lo` at 0" is step 2's "drop the negatives"**. That trimming picture is what made it click.
+
+**My question after it passed: why is `lo == 0` the final check?** Valid means 0 is *one of* the possible counts. The range has no gaps, `lo` is clamped to ≥ 0, and `hi ≥ 0` (or we'd have exited), so 0 is in the range **exactly when the smallest possible count is 0**. `lo > 0` means even the choice that closes the most leaves `lo` brackets open. **`hi` is the wrong thing to check:** `"(*"` ends at `[0, 2]` and is valid (star = `)`); `hi = 2` only says the worst choice of stars leaves 2 open. The two checks mirror each other: **`hi < 0` mid-loop** = even the most-open choice ran out of `(`; **`lo > 0` at the end** = even the most-closing choice left something open.
+
+| `"((*"` | lo | hi | |
+| ------- | -- | -- | - |
+| `(` | 1 | 1 | |
+| `(` | 2 | 2 | |
+| `*` | 1 | 3 | even with the star as `)`, one `(` stays open |
+| end | **1** | 3 | **invalid** |
+
+* **Why the "nothing" option matters:** if a star could only be `(` or `)`, every step would change every count by exactly ±1, and the possible counts would all be even or all be odd (`{0, 2}`, not `{0, 1, 2}`). The range would have gaps, and two numbers couldn't describe it. The +0 option fills them.
+* **Where it comes from:** this is the 2-D DP `dp[i][open]` ("can the first `i` characters leave `open` unclosed?"), with each row collapsed to its two ends because every row is one solid block. The same DP → greedy collapse as Kadane's `[1]`.
+
+**Review.** Correct on 300k fuzz cases against a brute force over all 3^k star choices. O(n), O(1). Nits: an unused `n` (removed), an `else` that would treat any stray character as `*` (fine under the `()*` contract), and the clamp comment, which says it's needed because "`*` doesn't have enough open braces". **`)` drives `lo` negative too**: in `"(*)"` the clamp fires after the `)`. The real reason: negative counts are dead choices, so the smallest live count is 0.
+* **Measured: the clearest branch-misprediction case in this topic.** The three-way `if / else if / else` on the character, 10M characters at `-O2`: **33.3 ms on random `()*`** vs **5.1 ms on a repeating `(*(*…`**. Same code, same length, 6.5× apart, purely from whether the CPU can guess the next branch. A 256-entry table of (Δlo, Δhi) per character turns the branch into two loads and two adds: **3.5 ms** on both. Irrelevant at LeetCode's n ≤ 100 (under a microsecond either way), not applied.
+
+**The two other common solutions (in words):**
+* **Two stacks of indices** (O(n) space): one for `(`, one for `*`. Each `)` pops a `(` if there is one, otherwise a `*`. At the end, pair each leftover `(` with a `*` that comes **after** it.
+* **Two passes** (O(1) space): left to right with every `*` as `(` (no `)` may ever be unmatched), then right to left with every `*` as `)` (no `(` may be unmatched).
+
+**Edge cases:** `""` → true; `"*"` → true; `")"` → false (hi = −1 at once); `"("` → false (lo ends at 1).
+
+**Complexity:** O(n) time, early exit on `hi < 0`. O(1) space.

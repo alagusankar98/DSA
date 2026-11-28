@@ -1,5 +1,4 @@
 bool checkValidString(std::string_view s) {
-    const int n = static_cast<int>(s.size());
     // [low, high] to keep track of range of possible choices
     // '(' increments both
     // ')' decrements both
