@@ -8,21 +8,24 @@ std::vector<int> spiralOrder(std::vector<std::vector<int>>& matrix) {
     const int n = rows * cols;
     std::vector<int> spiralVector;
     spiralVector.reserve(n);
-    spiralVector.push_back(matrix[0][0]);
-    matrix[0][0] = std::numeric_limits<int>::max();
+    std::vector<uint8_t> seen(n, 0);
 
-    while(spiralVector.size() < n) {
+    for(int i = 0; i < n; i++) {
+        spiralVector.push_back(matrix[rowIdx][colIdx]);
+        seen[rowIdx * cols + colIdx] = 1;
+
         auto [rowOffset, colOffset] = directionArray[directionArrayIdx % 4];
-        rowIdx += rowOffset;
-        colIdx += colOffset;
+        int nextRowIdx = rowIdx + rowOffset;
+        int nextColIdx = colIdx + colOffset;
 
-        if(rowIdx < 0 || rowIdx >= rows || colIdx < 0 || colIdx >= cols || matrix[rowIdx][colIdx] == std::numeric_limits<int>::max()) {
-            rowIdx -= rowOffset;
-            colIdx -= colOffset;
+        if(nextRowIdx < 0 || nextRowIdx >= rows || nextColIdx < 0 || nextColIdx >= cols || seen[nextRowIdx * cols + nextColIdx]) {
             directionArrayIdx++;
+            auto [rowOffset, colOffset] = directionArray[directionArrayIdx % 4];
+            rowIdx = rowIdx + rowOffset;
+            colIdx = colIdx + colOffset;
         } else {
-            spiralVector.push_back(matrix[rowIdx][colIdx]);
-            matrix[rowIdx][colIdx] = std::numeric_limits<int>::max();
+            rowIdx = nextRowIdx;
+            colIdx = nextColIdx;
         }
     }
 
