@@ -1,44 +1,42 @@
 class DetectSquares {
 private:
-    using Point = std::pair<int, int>;
     std::unordered_map<int, std::unordered_map<int, int>> frequencyMap;
-public:
-    DetectSquares() {
-        
+
+    int countHelper(int sideX, int y2, int y1, int yCount) const {
+        auto sideXIt = frequencyMap.find(sideX);
+        int count = 0;
+        if(sideXIt != frequencyMap.end()) {
+            auto y2It = sideXIt->second.find(y2);
+            auto y1It = sideXIt->second.find(y1);
+            if(y2It != sideXIt->second.end() && y1It != sideXIt->second.end()) {
+                count += (y2It->second * y1It->second * yCount);
+            }
+        }
+        return count;
     }
-    
-    void add(const std::vector<int> point) {
+public: 
+    void add(const std::vector<int>& point) {
         frequencyMap[point[0]][point[1]]++;
     }
     
-    int count(const std::vector<int> point) const {
+    int count(const std::vector<int>& point) const {
         int x1 = point[0];
         int y1 = point[1];
 
-        auto xIt = frequencyMap.find(x1);
-        if(xIt == frequencyMap.end()) return 0; // No matching point to form (x1, y')
+        auto x1It = frequencyMap.find(x1);
+        if(x1It == frequencyMap.end()) return 0;
 
-        int squaresCount = 0;
-        for(const auto& [y2, y2Count] : xIt->second) {
+        int squareCount = 0;
+
+        for(const auto& [y2, y2Count] : x1It->second) {
             int side = std::abs(y2 - y1); // Length between (x1, y1) and (x1, y2)
             if(side == 0) continue; // Duplicate point (y1 == y2)
 
             // Potentially found a square that has one side between (x1, y1) and (x1, y2)
             // Check if matching (x3, y1) & (x3, y2) exists (or) (x4, y1) & (x4, y2) exists
-            int x3 = x1 + side;
-            if(auto x3It = frequencyMap.find(x3); x3It != frequencyMap.end()) {
-                if(x3It->second.contains(y1) && x3It->second.contains(y2)) {
-                    squaresCount += (y2Count * x3It->second.at(y1) * x3It->second.at(y2));
-                }
-            }
 
-            int x4 = x1 - side;
-            if(auto x4It = frequencyMap.find(x4); x4It != frequencyMap.end()) {
-                if(x4It->second.contains(y1) && x4It->second.contains(y2)) {
-                    squaresCount += (y2Count * x4It->second.at(y1) * x4It->second.at(y2));
-                }
-            }
+            squareCount += countHelper(x1 + side, y2, y1, y2Count) + countHelper(x1 - side, y2, y1, y2Count);
         }
-        return squaresCount;
+        return squareCount;
     }
 };
