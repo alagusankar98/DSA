@@ -6,3 +6,4 @@ Debugging/bug-log.md filter=git-crypt diff=git-crypt
 resume-log.md filter=git-crypt diff=git-crypt
 resume/** filter=git-crypt diff=git-crypt
 finance/** filter=git-crypt diff=git-crypt
+.claude/skills/** filter=git-crypt diff=git-crypt
