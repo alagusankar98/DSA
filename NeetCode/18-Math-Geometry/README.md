@@ -95,10 +95,12 @@ When a value is replaced by `f(value)` over and over, it ends at a fixed point o
 
 ### Pattern 5: Carry From the Least Significant End → stop when it dies
 Walk from the last digit. Add, keep the digit, pass the carry on. As soon as the carry is 0, the rest of the number is unchanged, so return early.
+* *Use for:* Plus One.
 * *Discipline:* the only case that grows the number is a carry that ripples past the first digit (all 9s). Handle it once, at the end.
 
 ### Pattern 6: Fast Power → square the base, halve the exponent
 While `n > 0`: if `n` is odd, multiply the result by the base; square the base; halve `n`. That's O(log n) multiplications. For negative `n`, compute with `|n|` and take the reciprocal.
+* *Use for:* Pow(x, n).
 * *Discipline:* widen `n` to `int64_t` **before** negating, because `-INT_MIN` overflows. Check `n = 0`, `x = 0`, `x = 1`, `x = −1`, and negative `x` with odd and even `n`.
 
 ### Pattern 7: Digit Positions → `i + j` and `i + j + 1`
@@ -211,3 +213,37 @@ Store every added point with its count. For a query point, loop over stored poin
 * **Time & Space Complexity:**
     * **Time O(log n):** the first `sumSquares` costs O(digits). After that, every value is ≤ 810, so the tail (≤ 15 steps) and the cycle (8) are constant.
     * **Space O(1):** two `int`s. The `set` version is O(tail + cycle) on the heap.
+
+### [5] Plus One
+* **The Core Pattern:** carry from the least significant end, and stop when it dies (§2 Pattern 5). Adding 1 only changes the trailing 9s (each becomes 0) and the first non-9 to their left (it goes up by one). Everything further left stays the same. The only case where the number grows is all 9s, and its answer is always `1` followed by n zeros.
+* **The "Gotcha":** **the question I asked was the wrong one.** I spent the effort on a trade-off: push the digits into a new vector and `std::reverse` at the end, or copy and add in place, then `insert` the carry at the front. On paper the in-place version wins: `reverse` always costs O(n), while `insert` costs O(n) only for all 9s (and also reallocates, because the copy's capacity is exactly n). **Measured, they tied** (139 vs 141 ns at n = 100, 13.3 vs 13.7 µs at n = 10⁴), because both spent almost all their time in the same loop: a `%` and a `/` on **every** digit, long after the carry had died. The real choice was neither: exit when the carry dies.
+* **The Struggle & Insights:**
+    * **First pass (`14a4444`):** copy, then a full right-to-left loop with `sum`, `% 10`, `/ 10` and a `uint8_t carry`, then `insert(begin, 1)` if the carry survived. Correct. On `[1, 2, 3]` it still visited 2 and 1 just to write back the same values.
+    * **Early exit:** `return` as soon as the carry hits 0. Typical case: 141 → **9 ns** at n = 100, 13.7 → **0.3 µs** at n = 10⁴, which is just the copy. Once the loop returns, **the `if (carry)` after it is always true**, the same dead-check lesson as Merge Triplets: the check inside the loop already decides what's true after it.
+    * **Optimal (`6408899`): the 9 test replaces the arithmetic.** The carry is only ever 0 or 1, so `sum` is at most 10, and the only real question per digit is *is it 9?* Below 9: increment and return. A 9: becomes 0 and the loop continues. **The loop itself is the carry**, with no `sum`, `%`, `/` or carry variable. That also removed a `-Wconversion` warning: `uint8_t` saved nothing, since it's promoted to `int` in `carry + digits[i]` anyway. All 9s: 148 → 40 ns at n = 100.
+    * **Left as is:** `insert` at the front for all 9s still reallocates and shifts n zeros. Building `1` + n zeros directly measured 13–20% faster, and only on that one input. Not interview-relevant, but worth saying: inserting at the front of a full vector means a reallocation plus a shift.
+* **Time & Space Complexity:**
+    * **Time O(n)** for the copy (the parameter is `const&` and a new vector is returned), plus **O(k + 1)** for k trailing 9s. All 9s: O(n).
+    * **Space O(n):** the result.
+
+### [6] Pow(x, n)
+* **The Core Pattern:** binary exponentiation (§2 Pattern 6). Write the exponent in binary: 13 = `1101` = 8 + 4 + 1, so x¹³ = x⁸ · x⁴ · x¹. Squaring a running `base` produces x, x², x⁴, x⁸, …, and the result multiplies in only the ones whose bit is set. One iteration **per bit**, not per unit: about 31 instead of 2³¹. Negative `n`: compute with |n|, then take the reciprocal.
+
+  | `n` | lowest bit | `base` | action | `result` |
+  |---|---|---|---|---|
+  | 13 | 1 | x | result *= base | x |
+  | 6 | 0 | x² | skip | x |
+  | 3 | 1 | x⁴ | result *= base | x⁵ |
+  | 1 | 1 | x⁸ | result *= base | x¹³ |
+
+* **The "Gotcha":** **`|INT_MIN|` doesn't exist as an `int`.** `int` covers −2³¹ to 2³¹ − 1, one more negative value than positive ones. The first try was `static_cast<unsigned>(-1 * n)`: the cast is on the right on the page, but **too late in time**. `-1 * n` is evaluated in `int` first, overflows (UB), and the cast converts the already-broken value. UBSan: `negation of -2147483648 cannot be represented in type 'int'`. **Change the type first, then negate:** `-static_cast<long long>(n)`, or `0u - static_cast<unsigned>(n)` (unsigned arithmetic wraps by definition). The loop counter `int i < cycles` was a second UB on the same input: `i` reached `INT_MAX` and `++` overflowed, which `-Wsign-compare` had flagged.
+* **The Struggle & Insights:**
+    * **Dodging the negation with structure:** I asked whether to branch on the sign instead: multiply counting down for positive `n`, divide counting up for negative `n`, so nothing is ever negated. It's safe (`INT_MIN + 1` exists), but it means two loops, it's still O(n), and it avoids the `INT_MIN` question instead of answering it. What an interviewer wants to hear is one sign check before the loop: widen, flip, invert, plus the sentence "`-INT_MIN` overflows `int`, so I widen first." A single `if` outside the loop costs nothing; avoiding it isn't a goal. **A variant that's valid if you can defend it:** invert `x` and run fast power directly on the negative `n`. It works because C++ division truncates toward zero, so halving shrinks a negative `n` to 0 the same way. The trap: `-3 % 2 == -1`, so the odd test must be `!= 0` or `& 1`, never `== 1`. Tested on −60..60 and `INT_MIN`.
+    * **Brute force with the cast fixed (`84c709c`):** widening to `long long` before `std::abs` was right. Then **TLE**: one multiply per unit of `n`, 4.36 s for a single `INT_MIN` call.
+    * **Binary exponentiation (`8c829ee`):** `myPow(2.0, INT_MIN)` takes 0.2–0.3 µs. One stop on the way: the exponent was briefly a `long`. That's 64 bits on Linux, which is why it passed, but **32 bits on Windows/MSVC**, where `std::abs(INT_MIN)` overflows again. Use `long long` or `int64_t` when you need the guarantee.
+    * **Floating point compounds:** at n = ±2³¹ with x = 1.0000001, the result is off from `std::pow` by a relative 1.2 × 10⁻⁸, from rounding in ~31 squarings. That's not a bug; LeetCode compares to about 10⁻⁵.
+    * **Edges the constraints exclude, but worth naming:** `x = 0, n < 0` is ∞, and 0⁰ should be 1. The code returns 0 for both, because the `x == 0` check runs before the `n == 0` check; swapping them fixes 0⁰. Negative bases need no special case: an odd exponent multiplies the sign in an odd number of times.
+    * **Systems details:** `cycles /= 2` on a signed type adds a sign fix-up before the shift, because the compiler can't know the value is non-negative (`>>= 1` or an unsigned type gives one shift). The last iteration squares `base` for nothing. The recursive version (halve, square the result) costs O(log n) stack frames; the iterative one costs none. All irrelevant at 32 iterations.
+* **Time & Space Complexity:**
+    * **Time O(log |n|):** at most 32 iterations for any `int`.
+    * **Space O(1).**
