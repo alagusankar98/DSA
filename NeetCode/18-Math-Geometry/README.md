@@ -80,6 +80,7 @@ A 90° clockwise rotation sends `(r, c)` to `(c, n − 1 − r)`. Two passes do 
 
 ### Pattern 2: Boundary Pointers → walk a side, then move it in
 Keep `top`, `bottom`, `left`, `right`. Walk the top row and move `top` down; the right column and move `right` left; the bottom row (reversed) and move `bottom` up; the left column (upwards) and move `left` right. Repeat while the rectangle isn't empty.
+* *Use for:* Spiral Matrix.
 * *Discipline:* re-check `top <= bottom` and `left <= right` **between** sides, not only at the top of the loop, or a single remaining row or column gets visited twice. Test 1×n, n×1, and non-square inputs.
 
 ### Pattern 3: Record First, Change Later → markers inside the grid
@@ -138,3 +139,29 @@ Store every added point with its count. For a query point, loop over stored poin
 * **Time & Space Complexity:**
     * **Time O(n²):** the flip is n/2 header swaps; the transpose is n(n − 1)/2 element swaps. Every cell must move, so this is optimal.
     * **Space O(1):** in place.
+
+### [2] Spiral Matrix
+* **The Core Pattern:** two ways to walk the spiral. **Simulation:** carry a position and a direction from a 4-entry `{dr, dc}` table, and turn clockwise when blocked by a wall or by a visited cell. **Boundary pointers (§2 Pattern 2):** the unvisited cells always form a rectangle, so four integers (`top`, `bottom`, `left`, `right`) replace any visited marks. Walk its four sides, shrinking it after each one. Both are O(m·n) time; only the second is O(1) extra space.
+* **The "Gotcha":** **a side's `for` loop guards only the index it walks along, not the row or column it sits on.** On `[[1, 2, 3]]`, the top row outputs `1 2 3` and `top++` makes the rectangle empty. The bottom row's column range is still valid, so it runs on row `bottom = 0` (the row just consumed) and outputs `2 1` again: `1 2 3 2 1`.
+
+  | side | walks along (guarded by its own loop) | sits on | needs | broken by |
+  |---|---|---|---|---|
+  | top row | columns `left..right` | row `top` | `top <= bottom` | nothing: true at the start of every round |
+  | right column | rows `top..bottom` | column `right` | `left <= right` | nothing: only `top` has moved |
+  | **bottom row** | columns `right..left` | row `bottom` | **`top <= bottom`** | **the `top++` after the top row** |
+  | **left column** | rows `bottom..top` | column `left` | **`left <= right`** | **the `right--` after the right column** |
+
+  Without those two checks, **66 of the 144 shapes from 1×1 to 12×12 output cells twice**: every shape whose last layer is a single row or column of length ≥ 2 (`1×2`, `3×1`, `3×5`, …). A single leftover *cell* survives by luck, since every range is already empty. The `while` check can't help, because it only runs at the top of a round. **The rule:** before a side, check the dimension it sits on, if an earlier side in the same round moved that boundary. Test 1×n and n×1 first.
+* **The Struggle & Insights:**
+    * **First pass: simulation with an in-matrix sentinel.** Take `(0,0)` before the loop, then each iteration: step, check, and either take the cell or **undo** the step and turn. Correct, but it felt like three rules with no reason behind them: why take a cell before the loop, why undo, when to check. **All three come from one unstated decision: what the position means at the top of the loop.** Here it meant "the cell I just took". Nothing ever steps onto `(0,0)`, so it has to be taken by hand. Moving before checking can leave you on an invalid cell, so the undo restores the meaning. And turn iterations output nothing, so the loop has to run on `size < n` instead of exactly n times. The sentinel (`INT_MAX` written into taken cells) also had two hidden costs: it only worked because the values are bounded to [−100, 100], and it destroyed the caller's matrix.
+    * **Look-ahead variant: "the position is the next cell to take".** No setup before the loop, exactly n iterations: take, look ahead, maybe turn, move. The worry was "turn until valid loops forever on the last cell", and it **does**. On a 3×3, every neighbour of the final `5` is taken, and four turns lead back to the start. Two facts remove the loop entirely:
+        * At the n-th cell there's nowhere left to go, so the count ends the loop before any look-ahead is needed.
+        * While cells remain, **one turn is always enough**: you're blocked exactly at a corner of the unvisited rectangle, and the clockwise turn points down its next edge. Checked on all 900 shapes up to 30×30, and two turns were never needed.
+
+      So it's `if`, not `while`.
+    * **The fold.** The blocked and clear branches both *moved*; they differed only in which direction. So the `if` body shrank to "turn", and the move is written once after it. **The validity check asks about a direction, not a position.** This also removed a `-Wshadow` warning from a second structured binding.
+    * **The review's gap: `seen` was O(m·n) extra space the geometry doesn't need**, plus a five-part branch and a load from a separate allocation on every cell. The boundary version needs checks only between sides. The first try at it left out the checks between sides (the Gotcha above). The fix put a guard into the condition of all four loops. Only two of the guards can ever fire; the other two just keep the pattern symmetric, and "which ones matter?" is the follow-up question to expect. The boundaries keep moving after a skipped side, which is harmless only because a skipped side means everything has been output and `size < n` exits.
+    * **Measured at `-O2`** (10×10 / 1000×1000): sentinel simulation 0.11 µs / 2038 µs, `seen` simulation 0.13 µs / 2570 µs, boundary pointers 0.05 µs / 1472 µs. Guards in the loop condition vs `if` around the loop: identical, because the compiler lifts the guard out of the loop.
+* **Time & Space Complexity:**
+    * **Time O(m·n):** every cell is output once. The boundary version spends O(1) per side on checks, not per cell.
+    * **Space O(1) extra** for the boundary version, not counting the O(m·n) output. The simulations were O(m·n) extra (`seen`), or O(1) by writing over the input.
