@@ -88,6 +88,7 @@ After sorting (or with a min-heap / count map), the smallest remaining item can 
 ### Pattern 5: Last Occurrence → extend the current window's end
 Precompute where each value appears last. The current piece's end is the max last-occurrence of everything inside it. Cut when the index reaches that end.
 * *Discipline:* an array of 26 (or 256) beats a hash map for character keys.
+* *Use for:* Partition Labels `[7]`.
 
 ### Pattern 6: Range of Possibilities → `[lo, hi]` instead of branching
 When a symbol can stand for several things, track the lowest and the highest value the running state could have. Fail when even `hi` is invalid; clamp `lo` so it never goes below what's legal; succeed if `lo` can reach the target at the end.
@@ -299,3 +300,23 @@ Few distinct values: the map fits in cache and skipping the sort wins 5×. Mostl
 **Edge cases:** no triplets → false (the `INT_MIN` start can't equal a target ≥ 1). All triplets poisoned → false. `triplet[2]` / `target[2]` assume exactly three elements (guaranteed by LeetCode, not checked).
 
 **Complexity:** O(n) time worst case, O(1) best case with the early exit. O(1) space.
+
+### [7] Partition Labels
+**Pattern:** Last Occurrence → extend the current window's end (Pattern 5). Precompute each letter's last index. Walk left to right; the current piece's end is the **farthest last occurrence** of every letter seen in it. When the index reaches that end, cut. It's Jump Game's `farthest` frontier `[2]` again, fed by a lookup table instead of jump lengths.
+
+**First, reading the problem.** "Each letter appears in at most one part" means **every copy of a letter must land in the same piece.** Return the piece sizes, with as many pieces as possible. `"abab"`: `ab | ab` puts `a` in both pieces, so the whole string is one piece → `[4]`. `"abac"`: `a | bac` and `ab | ac` both split the `a`s; `aba | c` works → `[3, 1]`.
+
+**Initial approach: the right model, with a cost worry.** Seeing `a` at index 0, the cut has to go past the **last** `a`; walking there picks up other letters, whose last copies can push the cut further still. Correct. The worry: "for every new character, an O(n) scan to the end?", which would be O(n²). **The fix: the question "where is this letter's last copy?" has the same answer every time**, because the string never changes. Answer it **once, up front**: one pass records each letter's last index, then extending the frontier is a single table read. Two passes, O(n).
+
+**The cut rule: `i == end`.** When the index is the frontier itself, every letter in this piece has had its last copy, so nothing ahead can pull the piece longer. That's exactly where a cut is allowed, and cutting at the **earliest** allowed point leaves the most room for more pieces. **At most 26 pieces**: each one contains at least one letter that appears nowhere else, so `reserve(26)` is a proven bound, not a guess.
+
+**First pass (`c4f6058`) and review.** Correct on 200k fuzz cases against a brute force (a cut after `i` is legal iff no letter before it appears after it; take every legal cut). It used `unordered_map<char, int>`, filled **backwards** with `try_emplace`: walking from the right, the first insert per letter is its last index, and `try_emplace` won't overwrite it. Clever, but it works around the container.
+* **26 dense keys don't need a hash map.** The map allocates a bucket array plus up to 26 nodes per call; every read in the main loop hashes the `char`, finds its bucket, follows a pointer, and pays for an `.at()` bounds check that can never fail. A `std::array<int, 26>` indexed by `c - 'a'` is 104 bytes, needs no allocation, and a lookup is one indexed load. Filled **forwards** with plain assignment, the last write wins by itself. Measured (`-O2`): **1.45 → 0.40 µs at n = 500** (LeetCode's max: most of the old time was building the map), 2452 → 760 µs at n = 1e6. That's 3.3–3.6×, a constant factor, and "know your container" at 26 keys is what a systems interviewer asks about.
+* **A running count replaced by bounds.** `runningCount++` per character duplicated what the indices already say. With `startIdx` and `endIdx`, the piece is described by its bounds and its length is `end − start + 1`.
+* **Resetting the end after a cut isn't needed** (`-1` in the first pass, `startIdx` in the final one): the next character's last index is ≥ `i + 1`, so `max` picks it up anyway. Harmless.
+
+**Final version (`e189e5e`):** array table, forward fill, start/end bounds. It matches the reference array version's speed exactly. Small leftovers: `std::array<int, 26> lastIdxMap;` starts **uninitialised**. That's safe, since only slots for letters in the string are read and the first loop wrote all of them, but `{}` would zero 104 bytes for free and remove the question. The name `lastIdxMap` describes a container it no longer is.
+
+**Edge cases:** empty string → `{}`; one letter → `{1}`; all distinct → all 1s; first letter equals last letter → one piece. Lowercase-only is assumed by the 26-slot table (LeetCode guarantees it; any byte would need 256 slots).
+
+**Complexity:** O(n) time (two passes), O(1) space (26 ints plus at most 26 results).
