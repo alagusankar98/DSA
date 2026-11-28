@@ -14,19 +14,15 @@ std::vector<int> spiralOrder(std::vector<std::vector<int>>& matrix) {
         spiralVector.push_back(matrix[rowIdx][colIdx]);
         seen[rowIdx * cols + colIdx] = 1;
 
-        auto [rowOffset, colOffset] = directionArray[directionArrayIdx % 4];
-        int nextRowIdx = rowIdx + rowOffset;
-        int nextColIdx = colIdx + colOffset;
+        int nextRowIdx = rowIdx + directionArray[directionArrayIdx].first;
+        int nextColIdx = colIdx + directionArray[directionArrayIdx].second;
 
         if(nextRowIdx < 0 || nextRowIdx >= rows || nextColIdx < 0 || nextColIdx >= cols || seen[nextRowIdx * cols + nextColIdx]) {
-            directionArrayIdx++;
-            auto [rowOffset, colOffset] = directionArray[directionArrayIdx % 4];
-            rowIdx = rowIdx + rowOffset;
-            colIdx = colIdx + colOffset;
-        } else {
-            rowIdx = nextRowIdx;
-            colIdx = nextColIdx;
+            directionArrayIdx = (directionArrayIdx + 1) % 4;
         }
+
+        rowIdx = rowIdx + directionArray[directionArrayIdx].first;
+        colIdx = colIdx + directionArray[directionArrayIdx].second;
     }
 
     return spiralVector;
