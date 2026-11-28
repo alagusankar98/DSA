@@ -90,6 +90,7 @@ When a cell's value decides a change to its whole row and column, decide everyth
 
 ### Pattern 4: Repeated Function → detect the cycle
 When a value is replaced by `f(value)` over and over, it ends at a fixed point or loops. A `set` of seen values detects the loop simply. Floyd's slow (`f(x)`) and fast (`f(f(x))`) pointers detect it in O(1) space.
+* *Use for:* Happy Number.
 * *Discipline:* decide what "done" means (reaching the target vs reaching any repeat). A fixed point is a cycle of length 1, so with Floyd both pointers meet there too: the test after they meet is *where* they met, not *whether*.
 
 ### Pattern 5: Carry From the Least Significant End → stop when it dies
@@ -182,3 +183,31 @@ Store every added point with its count. For a query point, loop over stored poin
 * **Time & Space Complexity:**
     * **Time O(m·n):** a scan of row 0 and column 0, one marking pass, one apply pass, two final sweeps. The brute force was O(m·n + z·(m + n)), so O(m·n·(m + n)) worst case.
     * **Space O(1) extra:** two bools. Flag arrays: O(m + n). Brute force: O(z), allocated as O(m·n).
+
+### [4] Happy Number
+* **The Core Pattern:** repeated function → cycle detection (§2 Pattern 4). `n → sumSquares(n)` is a function, so the sequence either reaches the fixed point 1 or falls into a loop. Floyd: slow takes one step, fast takes two. They always meet, because a fixed point is a cycle of length 1. The answer is *where* they meet: at 1, or in the unhappy cycle `4 → 16 → 37 → 58 → 89 → 145 → 42 → 20 → 4`. Linked List Cycle used the same two pointers (`01-Linked-List/readme.md`, entry [3]); here the "next pointer" is a computed function instead of a stored one.
+* **The "Gotcha":** **"7 is happy too. Can the pointers meet at 7 and miss it?"** No. **A meeting point is always on the cycle.** Each value has exactly one next value, so if a value appears twice in the sequence, everything after it repeats too, and it's on the cycle. When slow and fast meet, they hold the same value at different positions in the sequence, so it's a value that appeared twice. 7 sits on the **tail** (`7 → 49 → 97 → 130 → 10 → 1`), and a tail value appears only once. Traced for n = 7:
+
+  | iter | slow | fast |
+  |---|---|---|
+  | start | 7 | 49 |
+  | 1 | 49 | 130 |
+  | 2 | 97 | 1 |
+  | 3 | 130 | 1 |
+  | 4 | 10 | 1 |
+  | 5 | 1 | 1 → meet |
+
+  Logged over every n from 1 to 10⁶: the pointers met only at 1 or at one of the eight values of the 4-cycle, never anywhere else.
+* **The Struggle & Insights:**
+    * **First idea: reduce to a single digit, then look it up.** I worked out 1–9 by hand: only **1 and 7** reach 1, the rest cycle. So: apply `sumSquares` while `n > 9`, then happy ⇔ the digit is 1 or 7. **It's correct** (verified on 1..10⁶ plus 200k random values up to `INT_MAX`). But it needs a second fact the hand check didn't cover: *does every number eventually reach a single digit?* If some number looped among 2- or 3-digit values forever, `while (n > 9)` would never end. The proof:
+        1. **Big numbers shrink:** a 10-digit `int` has a sum of squares of at most 10 × 81 = 810, so anything ≥ 1000 drops below 1000, and stays there (3 × 81 = 243).
+        2. **Below 1000, check them all:** all 999 reach a single digit within 15 steps, because the only unhappy cycle passes through **4**.
+        3. **From a single digit d, the rest is d's own sequence,** so the lookup is exact.
+
+      Sound, but it's a proof by computation about this particular function. In an interview "how do you know it terminates?" needs steps 1–2. Floyd needs no facts about the function at all, which is why it's the answer to give, with the number fact as a bonus observation.
+    * **Floyd version (`824e55a`):** fast starts one step ahead (`sumSquares(n)`), so `while (slow != fast)` doesn't exit immediately, and `return slow == 1` reads the meeting point. n = 1 starts with both at 1 and returns `true` without entering the loop.
+    * **Measured at `-O2`** (average over n = 1..10⁶): `unordered_set` 181–185 ns, **Floyd 42 ns**, "loop until 1 or 4" 32 ns. The set pays for heap nodes and hashing; Floyd pays three `sumSquares` calls per iteration and still wins by 4×. "Until 1 or 4" is faster only because it relies on the computed fact.
+    * **A guess that measured wrong:** exiting as soon as `fast == 1` looked free (for n = 7, fast reaches 1 three iterations before slow). It measured **35% slower** (56 vs 42 ns): an extra comparison in a loop whose iterations are this cheap costs more than the iterations it saves. Don't add it.
+* **Time & Space Complexity:**
+    * **Time O(log n):** the first `sumSquares` costs O(digits). After that, every value is ≤ 810, so the tail (≤ 15 steps) and the cycle (8) are constant.
+    * **Space O(1):** two `int`s. The `set` version is O(tail + cycle) on the heap.
