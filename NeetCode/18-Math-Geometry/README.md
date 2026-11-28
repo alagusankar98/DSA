@@ -1,0 +1,117 @@
+# Math & Geometry - Topic Guide
+
+## 1. Core Fundamentals
+
+Every topic so far had a data structure at its centre: a list, a tree, a heap, a graph, a DP table. **This one doesn't.** The input is a grid, a number, a string of digits, or a set of points, and the work is **arithmetic on indices and digits**: where does cell `(r, c)` go after a rotation, how does a carry move through a number, how do you raise something to a huge power without doing a huge number of multiplications.
+
+There's no clever search to find. **The difficulty is precision:** off-by-one on a boundary, a sign that C++ handles differently from maths, an `int` that overflows silently, a `double` that can't hold the exact answer. The code is short and the bugs are small. You've met most of the parts already:
+
+* **Digit extraction and overflow:** Reverse Integer `[6]` in `02-Bit-Manipulation/readme.md`: `% 10` takes off the last digit, `/ 10` drops it, `res * 10 + d` rebuilds the number, the overflow bound is checked *before* multiplying, and `abs(INT_MIN)` is undefined behaviour.
+* **2-D ↔ 1-D index maths:** Search a 2D Matrix `[2]` in `07-Binary-Search/README.md` (`row = i / cols`, `col = i % cols`, and why the row count doesn't appear), and the box index `(i / 3) * 3 + j / 3` from Valid Sudoku `[8]` in `03-Arrays-Hashing/readme.md`.
+* **Cycle detection without a set:** Floyd's tortoise and hare from Linked List Cycle `[3]` and Find the Duplicate Number `[9]` in `01-Linked-List/readme.md`. It works on **any** function that maps a value to a next value, not just on `next` pointers.
+* **Grids as data:** the four-direction walks from Graphs (Number of Islands `[1]`, Surrounded Regions `[7]`) and 2-D DP. Here the grid is something you transform in place, not something you search.
+
+### The Vocabulary
+* **In place:** the answer overwrites the input, with O(1) extra memory. For matrices this is the whole difficulty: once a cell is overwritten, its old value is gone unless you saved it first.
+* **Transpose:** swap across the main diagonal, `(r, c) ↔ (c, r)`. **Reflect (mirror):** reverse each row (left ↔ right) or the row order (top ↔ bottom). Every 90° rotation is a transpose plus one reflection.
+* **Layer (ring):** the outer border of a square matrix, then the border inside it, and so on. An `n × n` matrix has `n / 2` full layers (plus a centre cell when `n` is odd).
+* **Boundary pointers:** `top`, `bottom`, `left`, `right`, the current unvisited rectangle. Walking a border moves one of them inwards.
+* **In-band marker:** storing a flag *inside* the data you're processing (the first row and column of a matrix, a sign bit, an otherwise impossible value) instead of in a separate array, to get O(1) extra space.
+* **Carry:** what spills into the next digit when a digit sum exceeds 9. **Ripple:** a carry that keeps going (`999 + 1`), which is the worst case.
+* **Exponentiation by squaring (fast power):** compute `x^n` from the binary digits of `n`. `x^13 = x^8 · x^4 · x^1` because 13 = 1101₂. That's about `log₂ n` squarings instead of `n − 1` multiplications.
+* **Truncation toward zero:** C++ integer division rounds toward 0, so `-7 / 3 == -2` and `-7 % 3 == -1`. The remainder takes the **dividend's** sign. Maths "mod" is never negative; C++ `%` can be.
+* **Two's complement asymmetry:** `INT_MIN = −2³¹` has no positive counterpart in `int`. `-INT_MIN`, `abs(INT_MIN)` and `INT_MIN / -1` are all undefined behaviour.
+* **Floating-point precision:** a `double` has a 53-bit mantissa, so integers above 2⁵³ aren't all representable (2⁵³ + 1 rounds to 2⁵³). Multiply many doubles and the rounding errors add up. Compare with a tolerance, never with `==`.
+* **Axis-aligned:** sides parallel to the x and y axes. An axis-aligned square is fully determined by **one diagonal**: two opposite corners give you the other two.
+
+### The Four Questions, Math Edition (ask them before writing any code)
+1. **What's the index mapping?** Write where `(r, c)` goes, or which digit position feeds which, as a formula. Check it on a 3×3 (or a 2-digit) case **by hand** before coding.
+2. **What gets overwritten before it's read?** In place means order matters. Save the value you're about to destroy, or choose an order that reads everything first.
+3. **What are the extreme values?** Zero, one, `INT_MIN`, a negative exponent, all 9s, a 1×1 or 1×n matrix, an empty string. Most of the bugs here live at these points.
+4. **Does it fit the type?** Work out the largest intermediate value (a product of two `int`s, a running sum, `n` squarings) and pick `int64_t`, a digit array or a `double` deliberately.
+
+### Brute Force vs the Math Trick
+* **Simulate first, then look for the structure.** Walking the spiral one cell at a time, multiplying `x` by itself `n` times, or doing long multiplication one digit at a time are all correct brute forces. The improvement is usually a structural observation (squaring, layers, digit positions), not a different algorithm.
+* **The extra-space version is the reference.** Copy the matrix and rotate into the copy; store which rows and columns to clear in two arrays; keep visited values in a `set`. Get that right first, then remove the extra space. **Fuzz the in-place version against it.** In-place bugs come out as wrong cells, not crashes.
+* **Don't reach for `std::pow` or a `double` on integer problems.** `std::pow` works in floating point. Some results come out right, but you'd be relying on rounding. For exact integer answers, use integer maths.
+
+### The Problem Families by Shape
+* **In-place matrix transform:** turn a square grid in place. Either as two simple passes (transpose, then reflect) or one pass over each layer that moves four cells at once through one temporary.
+* **Boundary walk:** visit a grid's cells in spiral order. Keep the four boundary pointers and walk one side at a time, moving that boundary in after each side; stop when the rectangle is empty. Non-square inputs and single rows or columns are where it breaks.
+* **Mark using the grid itself:** a cell's value tells you to change its whole row and column. Changing them straight away corrupts cells you haven't read yet, so record the decisions first. O(1) space comes from using the first row and column as markers, with one extra flag for their own overlap.
+* **A number-to-number function with a cycle:** apply a digit-based function (the sum of squared digits) repeatedly; it either reaches a fixed point or loops forever. Detect the loop with a `set`, or with Floyd's two speeds and O(1) space.
+* **Carry through a digit array:** add to a number stored as its digits. Walk from the least significant digit, stop as soon as the carry dies, and handle the case where it ripples off the front.
+* **Fast power:** `x^n` with `n` up to ±2³¹. Square the base and halve the exponent; multiply into the result when the low bit is set. Negative `n` means `1 / x^|n|`, and `|INT_MIN|` doesn't fit in an `int`.
+* **Grade-school arithmetic on strings:** multiply two numbers too large for any built-in type. The digit at position `i` of one and `j` of the other lands at positions `i + j` and `i + j + 1` of the result. Accumulate into an `int` array, carry at the end, strip leading zeros.
+* **Geometry by counting points:** count shapes formed by points added over time. Store points in a count map; for each query, fix one corner, loop over candidates for the opposite corner, and look up the other two. Multiply the counts, because duplicate points make several distinct shapes.
+
+### Complexity Cheat Sheet
+| Shape | Time | Space |
+| -- | -- | -- |
+| In-place matrix transform | O(n²) | O(1) |
+| Boundary walk | O(m·n) | O(1) besides the output |
+| Mark rows/cols in the grid itself | O(m·n) | O(1) (O(m + n) with flag arrays) |
+| Digit function + cycle detection | O(log n) per step, few steps | O(1) Floyd / O(steps) set |
+| Carry through digits | O(n) worst case, O(1) typical | O(1), or O(n) if it ripples off the front |
+| Fast power | O(log n) multiplications | O(1) iterative / O(log n) recursive |
+| String multiplication | O(m·n) | O(m + n) |
+| Shape counting from a point map | O(candidates) per query | O(points) |
+
+### The Hardware Reality
+* **Division is the slow arithmetic operation, unless the divisor is a constant.** Verified on this machine at `-O2`: `x / 10` compiles to a multiply by a magic constant plus shifts (no divide instruction), while `x / y` with a runtime `y` emits `idiv`, which takes tens of cycles where a multiply takes a few. Digit loops by 10 are cheap. Dividing by a runtime value inside a hot loop isn't.
+* **Matrix walks: rows are contiguous, columns are strided.** Reading `m[r][c]` along a row streams one cache line after another. Reading down a column jumps a whole row each step, and with `vector<vector<int>>` every row is a separate heap allocation, so each step is a pointer chase as well. Transpose and layer rotation both read columns. For small `n` it doesn't matter; for big matrices, blocked (tiled) transposes exist for this reason.
+* **One temporary vs a copy:** the four-way layer swap touches each cell once with one register. Transpose + reflect touches each cell twice but in simpler, more predictable loops. Measure before believing either is faster.
+* **Fast power is the same loop as `[4] Reverse Bits` in Bit Manipulation:** test the low bit, shift right. A branch on `n & 1` is data-dependent but there are only ~31 iterations, so it doesn't matter.
+* **Digit arrays: use `int`, not `char`.** Accumulating products into an `int` array and carrying once at the end avoids a carry pass after every single product. Converting `'7' → 7` is one subtraction (`c - '0'`).
+* **Points as hash keys:** a `pair<int,int>` needs a custom hash. Packing `(x, y)` into one 64-bit integer (`uint64_t(uint32_t(x)) << 32 | uint32_t(y)`, unsigned so the shift is defined for negative coordinates) gives a plain integer key. With small coordinates, a fixed 2-D count array beats any hash map (the Hand of Straights lesson).
+* **Embedded fit:** fixed-point maths, fast power for modular exponentiation (crypto on a microcontroller), and rotating a frame buffer for a display are the real-world versions of this topic. No allocation, a known worst case, integer-only.
+
+### Where This Shows Up in the Real World
+**Graphics and displays:** rotating images and frame buffers (screen orientation, camera sensors read out sideways), and spiral or zig-zag scan orders (JPEG walks the 8×8 DCT block in zig-zag order). **Cryptography:** RSA and Diffie-Hellman are fast modular exponentiation on numbers thousands of bits long. **Big-number libraries:** GMP and Python's `int` do grade-school multiplication for small sizes and Karatsuba/FFT beyond. **Checksums and hashing:** digit and modular arithmetic (Luhn for card numbers, CRCs). **Pseudo-random number generators:** each is a number-to-number function, and its cycle length is its period (Floyd's and Brent's algorithms measure it). **Computational geometry:** collision detection, GIS and CAD all start from point lookups and axis-aligned bounding boxes.
+
+---
+
+## 2. General Summary / Quick Reference
+
+### Pattern 1: Rotate = Transpose + Reflect → or four-way swaps per layer
+A 90° clockwise rotation sends `(r, c)` to `(c, n − 1 − r)`. Two passes do it: transpose (swap across the diagonal), then reverse every row. Counter-clockwise is transpose, then reverse the row order. In one pass, rotate each layer by moving four cells at a time through one temporary.
+* *Discipline:* write the mapping and check it on a 3×3 by hand. Transpose only the upper triangle (`c > r`), or every pair is swapped twice and nothing changes. For layers, get the loop bounds for `n` odd and even.
+
+### Pattern 2: Boundary Pointers → walk a side, then move it in
+Keep `top`, `bottom`, `left`, `right`. Walk the top row and move `top` down; the right column and move `right` left; the bottom row (reversed) and move `bottom` up; the left column (upwards) and move `left` right. Repeat while the rectangle isn't empty.
+* *Discipline:* re-check `top <= bottom` and `left <= right` **between** sides, not only at the top of the loop, or a single remaining row or column gets visited twice. Test 1×n, n×1, and non-square inputs.
+
+### Pattern 3: Record First, Change Later → markers inside the grid
+When a cell's value decides a change to its whole row and column, decide everything before changing anything. O(m + n) space: two flag arrays. O(1): use row 0 and column 0 as the flags, plus one variable for whether row 0 (or column 0) itself needs clearing, because cell `(0, 0)` can only hold one of the two flags.
+* *Discipline:* apply the changes to the inner cells first and the marker row/column **last**, or you erase your own markers.
+
+### Pattern 4: Repeated Function → detect the cycle
+When a value is replaced by `f(value)` over and over, it ends at a fixed point or loops. A `set` of seen values detects the loop simply. Floyd's slow (`f(x)`) and fast (`f(f(x))`) pointers detect it in O(1) space.
+* *Discipline:* decide what "done" means (reaching the target vs reaching any repeat). A fixed point is a cycle of length 1, so with Floyd both pointers meet there too: the test after they meet is *where* they met, not *whether*.
+
+### Pattern 5: Carry From the Least Significant End → stop when it dies
+Walk from the last digit. Add, keep the digit, pass the carry on. As soon as the carry is 0, the rest of the number is unchanged, so return early.
+* *Discipline:* the only case that grows the number is a carry that ripples past the first digit (all 9s). Handle it once, at the end.
+
+### Pattern 6: Fast Power → square the base, halve the exponent
+While `n > 0`: if `n` is odd, multiply the result by the base; square the base; halve `n`. That's O(log n) multiplications. For negative `n`, compute with `|n|` and take the reciprocal.
+* *Discipline:* widen `n` to `int64_t` **before** negating, because `-INT_MIN` overflows. Check `n = 0`, `x = 0`, `x = 1`, `x = −1`, and negative `x` with odd and even `n`.
+
+### Pattern 7: Digit Positions → `i + j` and `i + j + 1`
+For long multiplication, digit `i` of the first number times digit `j` of the second contributes to result positions `i + j` (the carry) and `i + j + 1` (the digit). Use an `int` array of size `m + n`, accumulate all products, then carry once from right to left.
+* *Discipline:* strip leading zeros at the end, and short-circuit when either input is `"0"`.
+
+### Pattern 8: Count Map of Points → fix one corner, look up the rest
+Store every added point with its count. For a query point, loop over stored points that could be the **opposite** corner (axis-aligned: different x **and** `|dx| == |dy|`), then look up the two remaining corners and multiply all three counts.
+* *Discipline:* reject the zero-area case (`dx == 0`). Multiply counts instead of adding 1, since duplicate points make distinct shapes.
+
+### The Non-Negotiable Discipline
+* **Write the index or digit mapping as a formula, and check it by hand on the smallest non-trivial case** (3×3, two digits, `n = 5`).
+* **Work out the largest intermediate value before choosing a type.** `int` × `int` needs `int64_t`; `|INT_MIN|` needs `int64_t`; integers above 2⁵³ don't fit exactly in a `double`.
+* **For in-place work, name what gets overwritten and when.** Then fuzz against the extra-space reference version.
+* **Test the edges deliberately:** 1×1, 1×n, n×1, empty, zero, one, negative, `INT_MIN`, all 9s.
+* **No `std::pow` and no `==` on doubles** when the answer has to be an exact integer.
+
+---
+
+## 3. Problem Strategies & Patterns
